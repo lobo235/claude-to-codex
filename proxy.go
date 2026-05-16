@@ -27,12 +27,13 @@ type childConnection struct {
 }
 
 type proxyServer struct {
-	children       []*childServer
-	tools          map[string]toolRoute
-	prompts        map[string]promptRoute
-	resource       map[string]*childServer
-	templateRoutes []*childServer
-	logger         *slog.Logger
+	children         []*childServer
+	tools            map[string]toolRoute
+	prompts          map[string]promptRoute
+	resource         map[string]*childServer
+	templateRoutes   []*childServer
+	logger           *slog.Logger
+	operationTimeout time.Duration
 }
 
 type childFailure struct {
@@ -59,10 +60,11 @@ type exposedTool struct {
 
 func newProxyServer(logger *slog.Logger) *proxyServer {
 	return &proxyServer{
-		tools:    map[string]toolRoute{},
-		prompts:  map[string]promptRoute{},
-		resource: map[string]*childServer{},
-		logger:   logger,
+		tools:            map[string]toolRoute{},
+		prompts:          map[string]promptRoute{},
+		resource:         map[string]*childServer{},
+		logger:           logger,
+		operationTimeout: bridgeOperationTimeout(),
 	}
 }
 
@@ -83,7 +85,9 @@ func (p *proxyServer) connectChildren(ctx context.Context, servers []ScopedServe
 func (p *proxyServer) connectChildrenBestEffort(ctx context.Context, servers []ScopedServer) []childFailure {
 	var failures []childFailure
 	for _, server := range servers {
-		conn, err := connectChild(ctx, server)
+		childCtx, cancel := p.operationContext(ctx)
+		conn, err := connectChild(childCtx, server)
+		cancel()
 		if err != nil {
 			failures = append(failures, childFailure{server: server, operation: "connect", err: err})
 			continue
@@ -92,6 +96,14 @@ func (p *proxyServer) connectChildrenBestEffort(ctx context.Context, servers []S
 		p.logger.Info("connected Claude MCP server", "scope", server.Scope, "name", server.Name)
 	}
 	return failures
+}
+
+func (p *proxyServer) operationContext(parent context.Context) (context.Context, context.CancelFunc) {
+	timeout := p.operationTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	return context.WithTimeout(parent, timeout)
 }
 
 func connectChild(ctx context.Context, server ScopedServer) (*childConnection, error) {
@@ -217,7 +229,9 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 	childPrompts := map[*childServer][]*mcpsdk.Prompt{}
 
 	for _, child := range p.children {
-		tools, err := collectTools(ctx, child.session)
+		toolsCtx, cancelTools := p.operationContext(ctx)
+		tools, err := collectTools(toolsCtx, child.session)
+		cancelTools()
 		if err != nil {
 			p.logger.Warn("child tools unavailable", "scope", child.Scope, "server", child.Name, "error", err)
 		} else {
@@ -227,7 +241,9 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 			}
 		}
 
-		prompts, err := collectPrompts(ctx, child.session)
+		promptsCtx, cancelPrompts := p.operationContext(ctx)
+		prompts, err := collectPrompts(promptsCtx, child.session)
+		cancelPrompts()
 		if err == nil {
 			childPrompts[child] = prompts
 			for _, prompt := range prompts {
@@ -274,7 +290,9 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 	}
 
 	for _, child := range p.children {
-		resources, err := collectResources(ctx, child.session)
+		resourcesCtx, cancelResources := p.operationContext(ctx)
+		resources, err := collectResources(resourcesCtx, child.session)
+		cancelResources()
 		if err == nil {
 			for _, childResource := range resources {
 				resource := *childResource
@@ -288,7 +306,9 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 			p.logger.Debug("child resources unavailable", "server", child.Name, "error", err)
 		}
 
-		templates, err := collectResourceTemplates(ctx, child.session)
+		templatesCtx, cancelTemplates := p.operationContext(ctx)
+		templates, err := collectResourceTemplates(templatesCtx, child.session)
+		cancelTemplates()
 		if err == nil {
 			for _, childTemplate := range templates {
 				template := *childTemplate
@@ -315,7 +335,9 @@ func (p *proxyServer) inspectTools(ctx context.Context) ([]exposedTool, []childF
 	var toolNames []string
 	var failures []childFailure
 	for _, child := range p.children {
-		tools, err := collectTools(ctx, child.session)
+		toolsCtx, cancel := p.operationContext(ctx)
+		tools, err := collectTools(toolsCtx, child.session)
+		cancel()
 		if err != nil {
 			failures = append(failures, childFailure{server: child.ScopedServer, operation: "list_tools", err: err})
 			continue

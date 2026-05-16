@@ -1,6 +1,13 @@
 # Troubleshooting
 
-This guide assumes the bridge was installed from `~/dev/claude-to-codex` with `./install.sh` or `make install`.
+This guide assumes `claude-to-codex` was installed from `~/dev/claude-to-codex` with `./install.sh` or `make install`.
+
+Names used here:
+
+- `cwc`: the daily command to type instead of `codex`
+- `claude-to-codex`: the maintenance CLI and MCP server binary
+- `claude-bridge`: the Codex MCP server entry that runs `claude-to-codex serve`
+- `codex-with-claude`: the long-form alias for `cwc`
 
 ## Quick Diagnostics
 
@@ -9,16 +16,14 @@ command -v codex
 codex --version
 codex login status
 codex mcp list
-command -v claude-to-codex
-command -v codex-with-claude
-claude-to-codex version
-claude-to-codex inspect
-claude-to-codex inspect --tools
+cwc --doctor
+cwc --status
+cwc --smoke-test
 ```
 
 ## `claude-to-codex: command not found`
 
-The bridge is not installed or `~/.local/bin` is not on `PATH`.
+The maintenance CLI is not installed or `~/.local/bin` is not on `PATH`.
 
 Run:
 
@@ -62,8 +67,6 @@ Complete the browser or device login flow. If OpenAI reports missing access, bil
 
 ## Codex Does Not Show `claude-bridge`
 
-Check `~/.codex/config.toml` contains:
-
 Prefer the CLI:
 
 ```bash
@@ -71,7 +74,7 @@ codex mcp add claude-bridge -- claude-to-codex serve
 codex mcp get claude-bridge
 ```
 
-If an old `claude-bridge` entry already exists and points somewhere else:
+If an old `claude-bridge` entry already exists and points somewhere else, confirm it is safe to replace. It may be user-owned if the name was reused:
 
 ```bash
 codex mcp remove claude-bridge
@@ -104,38 +107,40 @@ If no user servers appear, confirm Claude Code has MCP servers in `~/.claude.jso
 
 Project-scoped Claude MCP servers are read from `<project>/.mcp.json`.
 
-Launch Codex through the wrapper from inside the project:
+Launch Codex through `cwc` from inside the project:
 
 ```bash
 cd /path/to/project
-codex-with-claude
+cwc
 ```
 
-The wrapper sets `CLAUDE_BRIDGE_PROJECT_ROOT`. Without that environment variable, Codex may start the MCP bridge from a different working directory and the bridge may not find the intended `.mcp.json`.
+`cwc` sets `CLAUDE_BRIDGE_PROJECT_ROOT`. Without that environment variable, Codex may start `claude-bridge` from a different working directory and `claude-to-codex` may not find the intended `.mcp.json`.
+
+`codex-with-claude` is installed too; it is the same launcher with a more explicit name.
 
 ## `inspect --tools` Reports Child Failures
 
-This means the bridge found the child MCP server config but could not connect to that child.
+This means `claude-to-codex` found the child MCP server config but could not connect to that child.
 
 Common causes:
 
 - The child MCP command is not installed or not on `PATH`.
 - The child MCP server needs environment variables that are missing in the current shell.
-- A project-scoped server expects to run from the project root, but Codex was launched directly instead of with `codex-with-claude`.
+- A project-scoped server expects to run from the project root, but Codex was launched directly instead of with `cwc`.
 - An HTTP MCP URL is unreachable.
 - HTTP MCP headers or auth values in the Claude config are stale.
 
-If at least one child connects, the bridge keeps running and skips the unavailable child. If all children fail, bridge startup fails.
+If at least one child connects, `claude-to-codex` keeps running and skips the unavailable child. If all children fail, `claude-bridge` startup fails.
 
 ## Tools Have Unexpected Names
 
-When two child MCP servers expose the same tool name, the bridge prefixes the exposed tool name with the child server name:
+When two child MCP servers expose the same tool name, `claude-to-codex` prefixes the exposed tool name with the child server name:
 
 ```text
 serverName__toolName
 ```
 
-The original child tool name is still used when the bridge forwards the call.
+The original child tool name is still used when `claude-to-codex` forwards the call.
 
 ## Claude Skills Did Not Appear In Codex
 
@@ -151,7 +156,13 @@ Only valid skill names are synced. Names must match:
 ^[a-z0-9][a-z0-9-]*$
 ```
 
-The bridge skips a Claude skill when a Codex skill with the same name already exists and is not the matching symlink. This protects hand-written Codex skills.
+`claude-to-codex` creates generated Codex-compatible skill wrappers under `~/.codex/skills/<name>/SKILL.md`. This gives Codex valid frontmatter even when the source Claude skill uses a different format.
+
+`sync-skills` uses `codex exec` with a fast model to write a useful frontmatter description, then records the source hash in the wrapper. Rerunning it should leave unchanged wrappers alone. If metadata generation fails, `claude-to-codex` falls back to a deterministic description so the skill still loads.
+
+When `cwc` has to generate or refresh skill frontmatter, it prints progress to stderr, for example `generating frontmatter for <skill_name> [1/20 skills]`. Normal launches stay quiet when every generated wrapper is current.
+
+`claude-to-codex` skips a Claude skill when a Codex skill with the same name already exists and is not generated by `claude-to-codex`. This protects hand-written Codex skills. It will replace an older matching symlink created by a previous version.
 
 ## Claude Slash Commands Did Not Appear In Codex
 
@@ -161,15 +172,15 @@ Run:
 claude-to-codex sync-commands
 ```
 
-Commands are read from `~/.claude/commands/*.md`. The bridge creates generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
+Commands are read from `~/.claude/commands/*.md`. `claude-to-codex` creates generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
 
-The bridge skips a command if a hand-written Codex skill already exists at the same path. It updates only files that contain the generated marker:
+`claude-to-codex` skips a command if a hand-written Codex skill already exists at the same path. It updates only files that contain the generated marker:
 
 ```text
 generated-by: claude-to-codex sync-commands
 ```
 
-## `codex-with-claude` Starts Codex But No Bridge Tools Work
+## `cwc` Starts Codex But No Bridge Tools Work
 
 Run this outside Codex:
 
@@ -183,7 +194,7 @@ If this fails, fix the child MCP server failure first. The error output should n
 
 ## Reset Generated Command Skills
 
-To regenerate bridge-created command skills:
+To regenerate command skill wrappers created by `claude-to-codex`:
 
 ```bash
 find ~/.codex/skills -name SKILL.md -print | xargs grep -l "generated-by: claude-to-codex sync-commands"
@@ -191,3 +202,20 @@ claude-to-codex sync-commands
 ```
 
 Remove only generated files you intentionally want rebuilt. Do not delete hand-written Codex skills unless you know you no longer need them.
+
+## Uninstall claude-to-codex
+
+Preview the removal first:
+
+```bash
+cd ~/dev/claude-to-codex
+cwc --uninstall --dry-run
+```
+
+Then remove claude-to-codex-owned files:
+
+```bash
+cwc --uninstall --yes
+```
+
+The uninstaller removes only installed `claude-to-codex`/`cwc` commands, generated Codex skill wrappers containing `generated-by: claude-to-codex`, and the `claude-bridge` MCP entry when it points at `claude-to-codex`. It leaves unrelated Codex config, auth, agents, plugins, MCP entries, hand-written skills, and Claude Code files alone.

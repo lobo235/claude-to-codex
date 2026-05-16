@@ -1,49 +1,84 @@
 # claude-to-codex
 
-`claude-to-codex` helps Claude Code users try Codex without rebuilding their local automation from scratch.
+`claude-to-codex` lets Claude Code users try Codex without rebuilding their local automation. It carries over Claude Code MCP servers, skills, slash commands, and project conventions into Codex.
 
-It exposes Claude Code MCP servers to Codex, mirrors Claude Code skills into Codex skills, and creates Codex skill wrappers for Claude Code slash commands.
+## What To Type
 
-This is useful if you already invested in:
+Daily use:
 
-- user-scoped Claude MCP servers in `~/.claude.json`
-- project-scoped Claude MCP servers in `.mcp.json`
-- Claude Code skills in `~/.claude/skills`
-- Claude Code slash commands in `~/.claude/commands`
-- project conventions such as `CLAUDE.md`
+```bash
+cwc
+```
 
-## What It Does
+Setup verification:
 
-`claude-to-codex serve` starts a Codex-facing MCP server named `claude-bridge`.
+```bash
+cwc --doctor
+cwc --status
+cwc --smoke-test
+cwc --version
+cwc --help
+```
 
-When Codex connects to that server, the bridge:
+Uninstall preview:
 
-1. Reads user-scoped MCP servers from `~/.claude.json`.
-2. Detects the active project root.
-3. Reads project-scoped MCP servers from `<project>/.mcp.json`.
-4. Connects to each configured Claude MCP server as a child MCP client.
-5. Re-exposes child tools, prompts, resources, resource templates, completions, subscriptions, and reads through one Codex MCP server.
+```bash
+cwc --uninstall --dry-run
+```
 
-The `scripts/codex-with-claude` wrapper also syncs Claude user artifacts before launching Codex:
+## Names To Know
 
-- `~/.claude/skills/<name>` is symlinked to `~/.codex/skills/<name>` when no Codex skill already exists.
-- `~/.claude/commands/*.md` is mirrored into generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
+- `cwc`: the daily launcher. Run this from a project instead of `codex`.
+- `claude-to-codex`: the maintenance CLI. It serves MCP, syncs skills/commands, and provides diagnostics.
+- `claude-bridge`: the Codex MCP server entry that runs `claude-to-codex serve`.
+- `codex-with-claude`: the same launcher as `cwc`, kept as a longer, explicit alias.
 
-Generated command skills point back to the Claude command source. Claude remains canonical. Hand-written Codex skills are not overwritten.
+## Quick Start
 
-## Install
+```bash
+git clone https://github.com/lobo235/claude-to-codex.git ~/dev/claude-to-codex
+cd ~/dev/claude-to-codex
+./install.sh
+codex mcp add claude-bridge -- claude-to-codex serve
+cwc --doctor
+cwc
+```
+
+MCP is how Codex talks to external tools. See [docs/mcp-and-claude-bridge.md](docs/mcp-and-claude-bridge.md) for a short explanation of MCP and what `claude-bridge` does.
+
+## Setup Paths
+
+There are three supported ways to set this up. They should all end in the same complete setup state.
+
+1. Read this README and run the commands yourself.
+2. Paste [SETUP_PROMPT.md](SETUP_PROMPT.md) into Claude Code or Codex and let an agent do the setup.
+3. Give an agent this repository URL and say "install this"; the agent should follow this README and use [SETUP_PROMPT.md](SETUP_PROMPT.md) as the detailed checklist.
+
+If you are starting from Claude Code only, follow [docs/cold-start.md](docs/cold-start.md) first. That guide includes the manual OpenAI account, Codex install, and login checkpoints.
+
+## Complete Setup Means
+
+A complete setup has all of these:
+
+- `claude-to-codex`, `cwc`, and `codex-with-claude` installed on `PATH`
+- Codex installed and logged in
+- Codex MCP entry `claude-bridge` configured to run `claude-to-codex serve`
+- Claude skills and slash commands synced into generated Codex skill wrappers
+- `cwc --doctor`, `cwc --status`, and `cwc --smoke-test` run without unexpected failures
+- daily use is simply `cwc` from inside a project
+
+## Install Details
 
 Requirements:
 
+- Linux, WSL/WSL2, or macOS
 - Go matching `go.mod` or newer
 - Git
 - Node.js/npm if you want the standard Codex CLI npm install path
 - Codex installed and available as `codex`
 - Claude Code config already present if you want to bridge existing Claude setup
 
-If you are starting from Claude Code only, follow [docs/cold-start.md](docs/cold-start.md) first. That guide includes the manual OpenAI account, Codex install, and login checkpoints.
-
-Clone and install:
+Install:
 
 ```bash
 git clone https://github.com/lobo235/claude-to-codex.git ~/dev/claude-to-codex
@@ -57,20 +92,30 @@ If you prefer Make directly:
 make test build install
 ```
 
-The install step places these commands in `~/.local/bin`:
+To install somewhere other than `~/.local`, set `PREFIX`:
 
-- `claude-to-codex`: the MCP proxy and sync CLI
-- `codex-with-claude`: a wrapper around `codex` that detects the project root and syncs Claude artifacts
+```bash
+PREFIX=/usr/local ./install.sh
+make PREFIX=/usr/local install
+```
 
-Make sure `~/.local/bin` is on your `PATH`:
+The install step places these commands in `$PREFIX/bin`:
+
+- `claude-to-codex`: the maintenance CLI
+- `cwc`: the daily launcher
+- `codex-with-claude`: the same launcher with a more explicit name
+
+Make sure `$PREFIX/bin` is on your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## Configure Codex
+That command is correct for the default `PREFIX=$HOME/.local`; adjust it if you choose a different prefix.
 
-Add the bridge as a Codex MCP server:
+## Configure Details
+
+Add `claude-bridge` as a Codex MCP server:
 
 ```bash
 codex mcp add claude-bridge -- claude-to-codex serve
@@ -84,35 +129,125 @@ command = "claude-to-codex"
 args = ["serve"]
 ```
 
-Then launch Codex from a project with:
-
-```bash
-codex-with-claude
-```
-
-Use `codex-with-claude` instead of `codex` when you want project-scoped Claude MCP servers to load correctly. The wrapper sets `CLAUDE_BRIDGE_PROJECT_ROOT` before Codex starts the MCP server.
+If `claude-bridge` already exists and points at `claude-to-codex serve`, leave it alone. If it points somewhere else, stop and confirm it is safe to replace because it may be user-owned.
 
 ## Verify
 
-From any project:
+Preferred checks:
+
+```bash
+cwc --doctor
+cwc --status
+cwc --smoke-test
+```
+
+Lower-level checks:
 
 ```bash
 claude-to-codex inspect
 claude-to-codex inspect --tools
 claude-to-codex sync-skills
 claude-to-codex sync-commands
-codex-with-claude
 ```
 
-`inspect` prints the detected project root and configured child MCP servers.
+Then launch Codex from a project:
 
-`inspect --tools` connects to child MCP servers and prints exposed tool names. If one child server fails but another works, the bridge reports the failed child and keeps going.
+```bash
+cwc
+```
+
+Use `cwc` instead of `codex` when you want project-scoped Claude MCP servers to load correctly. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT` before Codex starts `claude-bridge`.
+
+`cwc` reserves only its top-level maintenance options: `--doctor`,
+`--status`, `--smoke-test`, `--install`, `--uninstall`, `--version`,
+and `--help`. Any other arguments are passed through to `codex`. If a
+future Codex top-level flag needs one of those names, use `cwc --
+<args...>` to force pass-through.
+
+`cwc --help` prints `codex --help` first, then appends the
+`cwc`-specific options. `cwc --version` prints the installed
+`claude-to-codex` version and exits without launching Codex.
+
+## Secret Scanning
+
+This repo includes a Gitleaks pre-commit hook:
+
+```bash
+sudo apt install pre-commit
+pre-commit install
+pre-commit run gitleaks --all-files
+```
+
+On macOS, use `brew install pre-commit`. If you prefer Python tooling,
+install `pre-commit` with `pipx` or your normal Python package manager.
+
+The same full-repo scan is available through Make:
+
+```bash
+make secrets
+```
+
+If the hook reports a real secret, rotate it before committing. If it
+reports a confirmed false positive, prefer changing the example value;
+use `.gitleaksignore` only for a specific fingerprint that cannot be
+rewritten cleanly.
+
+## What It Does
+
+`claude-to-codex serve` starts a Codex-facing MCP server named `claude-bridge`.
+
+When Codex connects to `claude-bridge`, `claude-to-codex`:
+
+1. Reads user-scoped MCP servers from `~/.claude.json`.
+2. Detects the active project root.
+3. Reads project-scoped MCP servers from `<project>/.mcp.json`.
+4. Connects to each configured Claude MCP server as a child MCP client.
+5. Re-exposes child tools, prompts, resources, resource templates, completions, subscriptions, and reads through one Codex MCP server.
+
+The `cwc` launcher also syncs Claude user artifacts before launching Codex:
+
+- `~/.claude/skills/<name>/SKILL.md` is mirrored into a generated Codex-compatible wrapper at `~/.codex/skills/<name>/SKILL.md`.
+- `~/.claude/commands/*.md` is mirrored into generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
+
+Generated skill wrappers point back to the Claude source. Claude remains canonical. Hand-written Codex skills are not overwritten. Skill wrapper frontmatter is generated with `codex exec` using a fast model, then cached by source hash so unchanged skills are not rewritten on every launch.
+
+When `cwc` has to generate frontmatter, it prints progress such as:
+
+```text
+generating frontmatter for <skill_name> [1/20 skills]
+```
+
+## For Agents
+
+If the user gives you this repository URL and says "install this":
+
+1. Follow this README.
+2. Use [SETUP_PROMPT.md](SETUP_PROMPT.md) as the detailed checklist.
+3. Preserve unrelated Codex and Claude Code state.
+4. End with `cwc --doctor`, `cwc --status`, `cwc --smoke-test`, and tell the user daily use is `cwc`.
+
+## Uninstall
+
+To remove claude-to-codex files and return to plain Codex/Claude Code:
+
+```bash
+cd ~/dev/claude-to-codex
+cwc --uninstall --yes
+```
+
+For a preview:
+
+```bash
+cwc --uninstall --dry-run
+```
+
+The uninstaller removes installed `claude-to-codex`/`cwc` commands, generated Codex skill wrappers containing `generated-by: claude-to-codex`, and the `claude-bridge` MCP entry only when it points at `claude-to-codex`. It does not remove unrelated Codex config, auth, agents, plugins, MCP entries, hand-written skills, or Claude Code files.
 
 ## Tool Names
 
 If a tool or prompt name is unique across all child servers, Codex sees the original name.
 
-If multiple child servers expose the same name, the bridge prefixes the exposed name with the child server name:
+If multiple child servers expose the same name, `claude-to-codex` prefixes the exposed name with the child server name:
 
 ```text
 wiki_get_article
@@ -122,34 +257,20 @@ filesystem__status
 
 Calls are routed back to the original child server and original tool name.
 
-## One-Shot Setup Prompt
+## Links
 
-For a less technical Claude Code user, give an agent the prompt in [SETUP_PROMPT.md](SETUP_PROMPT.md). It asks Claude Code or Codex to install the bridge, update Codex config safely, validate MCP connectivity, sync skills and commands, and report exactly what changed.
-
-That prompt is written for a cold-start user who may need to pause for manual OpenAI signup, Codex installation, and browser login before automation can continue.
-
-## Troubleshooting
-
-Start with [docs/troubleshooting.md](docs/troubleshooting.md).
-
-Common checks:
-
-```bash
-command -v claude-to-codex
-command -v codex-with-claude
-claude-to-codex version
-claude-to-codex inspect --tools
-```
-
-If project-scoped MCP servers are missing, launch Codex with `codex-with-claude` from inside the project instead of launching `codex` directly.
+- [One-shot setup prompt](SETUP_PROMPT.md)
+- [Cold start from Claude Code](docs/cold-start.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [MCP and `claude-bridge`](docs/mcp-and-claude-bridge.md)
 
 ## Security Notes
 
-The bridge reads local Claude and Codex configuration files and starts the MCP servers already configured on your machine. It does not copy secrets into this repository and does not create a new remote service.
+`claude-to-codex` reads local Claude and Codex configuration files and starts the MCP servers already configured on your machine. It does not copy secrets into this repository and does not create a new remote service.
 
 Treat `inspect --tools` like starting your MCP servers: it may execute local stdio MCP commands or connect to HTTP MCP endpoints configured in Claude.
 
-Review generated Codex skills before relying on them. The generated skill wrappers instruct Codex to read the Claude command source at use time.
+Review generated Codex skills before relying on them. The generated skill wrappers instruct Codex to read the Claude source at use time.
 
 ## Development
 

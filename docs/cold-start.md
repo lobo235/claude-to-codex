@@ -1,14 +1,24 @@
 # Cold Start From Claude Code
 
-Use this guide when the machine already has Claude Code setup, but Codex is not installed, not logged in, or has never been configured with the bridge.
+Use this guide when the machine already has Claude Code setup, but Codex is not installed, not logged in, or has never been configured with `claude-to-codex`.
+
+The install and uninstall scripts are intended for Linux, WSL/WSL2, and macOS.
 
 The goal is:
 
 - keep Claude Code as the source of truth for existing MCP servers, skills, and slash commands
 - install and authenticate Codex
 - install `claude-to-codex`
-- connect Codex to the bridge
+- configure the `claude-bridge` MCP entry
 - verify user-scoped and project-scoped Claude MCP servers from Codex
+- finish with `cwc --doctor`, `cwc --status`, and `cwc --smoke-test`
+
+Names used in this guide:
+
+- `cwc`: the daily command to type instead of `codex`
+- `claude-to-codex`: the maintenance CLI and MCP server binary
+- `claude-bridge`: the Codex MCP server entry that runs `claude-to-codex serve`
+- `codex-with-claude`: the long-form alias for `cwc`
 
 ## Manual Checkpoint 1: OpenAI Account And Access
 
@@ -95,7 +105,7 @@ Ensure the installed commands are on `PATH`:
 
 ```bash
 command -v claude-to-codex
-command -v codex-with-claude
+command -v cwc
 ```
 
 If they are missing, add this to your shell config and open a new shell:
@@ -112,6 +122,8 @@ Use the Codex CLI:
 codex mcp add claude-bridge -- claude-to-codex serve
 ```
 
+MCP lets Codex talk to external tools. `claude-bridge` is the Codex MCP entry that runs `claude-to-codex`. See [mcp-and-claude-bridge.md](mcp-and-claude-bridge.md) for a short explanation.
+
 Then verify:
 
 ```bash
@@ -125,7 +137,7 @@ If `claude-bridge` already exists, inspect it first:
 codex mcp get claude-bridge
 ```
 
-If it does not point at `claude-to-codex serve`, replace only that MCP entry:
+If it does not point at `claude-to-codex serve`, confirm it is safe to replace. It may be user-owned if the name was reused. Replace only that MCP entry:
 
 ```bash
 codex mcp remove claude-bridge
@@ -153,6 +165,10 @@ claude-to-codex sync-commands
 
 These commands are safe to repeat. They do not overwrite hand-written Codex skills.
 
+`sync-skills` writes generated Codex-compatible wrappers, so Claude skills with missing or incompatible frontmatter can still load in Codex. It uses `codex exec` with a fast model to generate useful frontmatter descriptions, then records a source hash so reruns are idempotent. If an older bridge version created matching skill symlinks, `sync-skills` replaces those symlinks with generated wrappers.
+
+The first `cwc` launch may print progress while frontmatter is generated, such as `generating frontmatter for <skill_name> [1/20 skills]`. Later launches stay quiet when nothing changed.
+
 ## Verify Claude MCP Servers
 
 From a normal shell:
@@ -167,7 +183,7 @@ claude-to-codex inspect --tools
 - user-scoped servers from `~/.claude.json`
 - project-scoped servers from `.mcp.json` when a project root is detected
 
-If a child MCP server fails, fix that child server first. The bridge can continue when at least one child server works, but unavailable children will not expose tools to Codex.
+If a child MCP server fails, fix that child server first. `claude-to-codex` can continue when at least one child server works, but unavailable children will not expose tools to Codex.
 
 ## Verify Project-Scoped MCP Servers
 
@@ -176,24 +192,49 @@ Go to a project that has Claude project MCP config:
 ```bash
 cd /path/to/project
 test -f .mcp.json && echo "project MCP config exists"
-codex-with-claude
+cwc
 ```
 
-Use `codex-with-claude` instead of `codex` for normal project launches. The wrapper sets `CLAUDE_BRIDGE_PROJECT_ROOT`, syncs Claude skills and slash commands, then starts Codex.
+Use `cwc` instead of `codex` for normal project launches. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT`, syncs Claude skills and slash commands, then starts Codex. `codex-with-claude` remains available as the explicit long-form alias.
 
 Inside Codex, ask it to list or inspect available MCP tools. You should see tools exposed by the `claude-bridge` MCP server.
 
-## Recovery Drill
+## Final Verification
+
+Run:
+
+```bash
+cwc --doctor
+cwc --status
+cwc --smoke-test
+```
+
+If those checks look good, daily use is:
+
+```bash
+cwc
+```
+
+## Uninstall And Recovery
+
+To remove only claude-to-codex-owned files:
+
+```bash
+cd ~/dev/claude-to-codex
+cwc --uninstall --dry-run
+cwc --uninstall --yes
+```
+
+The uninstaller leaves unrelated Codex config, auth, agents, plugins, MCP entries, hand-written skills, and Claude Code files alone.
 
 If you intentionally remove everything and want to rebuild from scratch:
 
 ```bash
-codex logout || true
-rm -rf ~/.codex
-rm -f ~/.local/bin/claude-to-codex ~/.local/bin/codex-with-claude
+cd ~/dev/claude-to-codex
+./uninstall.sh --yes
 rm -rf ~/dev/claude-to-codex
 ```
 
 Then start again from Manual Checkpoint 1.
 
-Do not delete `~/.claude.json`, `~/.claude/skills`, `~/.claude/commands`, or project `.mcp.json` files unless you also want to remove your Claude Code setup.
+Do not delete `~/.codex`, `~/.claude.json`, `~/.claude/skills`, `~/.claude/commands`, or project `.mcp.json` files unless you also want to remove your normal Codex or Claude Code setup.

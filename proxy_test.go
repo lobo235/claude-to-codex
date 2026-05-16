@@ -103,6 +103,31 @@ func TestProxyContinuesWhenOneChildCannotConnect(t *testing.T) {
 	}
 }
 
+func TestProxyPerChildConnectTimeoutDoesNotStarveLaterChildren(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	proxy := newProxyServer(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	proxy.operationTimeout = 100 * time.Millisecond
+	failures := proxy.connectChildrenBestEffort(ctx, []ScopedServer{
+		{Name: "slow", Scope: "user", Config: MCPServerConfig{Command: "sh", Args: []string{"-c", "sleep 5"}}},
+		fakeServer("user", "user", ""),
+	})
+	defer proxy.close()
+	if len(failures) != 1 || failures[0].server.Name != "slow" {
+		t.Fatalf("failures = %#v, want one slow failure", failures)
+	}
+	if len(proxy.children) != 1 || proxy.children[0].Name != "user" {
+		t.Fatalf("connected children = %#v, want later user child connected", proxy.children)
+	}
+
+	session, closeSession := connectTestClient(t, ctx, proxy)
+	defer closeSession()
+	got := callFakeTool(t, ctx, session, "user_only")
+	if got.Server != "user" {
+		t.Fatalf("user_only server = %q, want user", got.Server)
+	}
+}
+
 func TestProxyChildSurvivesConnectContextCancellation(t *testing.T) {
 	connectCtx, cancelConnect := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelConnect()

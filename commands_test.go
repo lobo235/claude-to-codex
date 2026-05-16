@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ Command body.
 		t.Fatal(err)
 	}
 	body := string(data)
-	if !strings.Contains(body, generatedSkillMarker) {
+	if !strings.Contains(body, generatedCommandSkillMarker) {
 		t.Fatalf("generated skill missing marker:\n%s", body)
 	}
 	if !strings.Contains(body, commandPath) {
@@ -78,13 +79,15 @@ func TestSyncClaudeCommandDoesNotOverwriteHandWrittenSkill(t *testing.T) {
 	}
 }
 
-func TestSyncClaudeSkillCreatesSymlink(t *testing.T) {
+func TestSyncClaudeSkillCreatesGeneratedWrapper(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
 	home := t.TempDir()
 	claudeSkill := filepath.Join(home, ".claude", "skills", "example-mcp-skill")
 	if err := os.MkdirAll(claudeSkill, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(claudeSkill, "SKILL.md"), []byte("---\nname: example-mcp-skill\n---\n"), 0o644); err != nil {
+	sourcePath := filepath.Join(claudeSkill, "SKILL.md")
+	if err := os.WriteFile(sourcePath, []byte("---\nname: example-mcp-skill\n---\n\nUse the MCP server.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -95,17 +98,138 @@ func TestSyncClaudeSkillCreatesSymlink(t *testing.T) {
 	if len(results) != 1 || results[0].Status != "created" {
 		t.Fatalf("results = %#v, want one created skill", results)
 	}
-	dest := filepath.Join(home, ".codex", "skills", "example-mcp-skill")
-	target, err := os.Readlink(dest)
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "skills", "example-mcp-skill", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target != claudeSkill {
-		t.Fatalf("symlink target = %q, want %q", target, claudeSkill)
+	body := string(data)
+	if !strings.Contains(body, generatedClaudeSkillMarker) {
+		t.Fatalf("generated skill missing marker:\n%s", body)
+	}
+	if !strings.Contains(body, sourcePath) {
+		t.Fatalf("generated skill missing source path:\n%s", body)
+	}
+	if !strings.Contains(body, "Use the MCP server.") {
+		t.Fatalf("generated skill missing source snapshot:\n%s", body)
+	}
+}
+
+func TestSyncClaudeSkillWrapsSkillWithInvalidClaudeFrontmatter(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	claudeSkill := filepath.Join(home, ".claude", "skills", "example-mcp-skill")
+	if err := os.MkdirAll(claudeSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(claudeSkill, "SKILL.md")
+	if err := os.WriteFile(sourcePath, []byte("# Release Workflow\n1. Run tests.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := syncClaudeSkills(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "created" {
+		t.Fatalf("results = %#v, want one created skill", results)
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "skills", "example-mcp-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	if !strings.HasPrefix(body, "---\nname: example-mcp-skill\n") {
+		t.Fatalf("generated skill missing valid frontmatter:\n%s", body)
+	}
+	if !strings.Contains(body, "source-sha256: ") {
+		t.Fatalf("generated skill missing source hash:\n%s", body)
+	}
+	if !strings.Contains(body, sourcePath) || !strings.Contains(body, "# Release Workflow") {
+		t.Fatalf("generated skill missing source content:\n%s", body)
+	}
+}
+
+func TestSyncClaudeSkillIsUnchangedWhenSourceHashMatches(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	claudeSkill := filepath.Join(home, ".claude", "skills", "example-mcp-skill")
+	if err := os.MkdirAll(claudeSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := []byte("# Release Workflow\n1. Run tests.\n")
+	if err := os.WriteFile(filepath.Join(claudeSkill, "SKILL.md"), source, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skillPath := filepath.Join(home, ".codex", "skills", "example-mcp-skill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	existing := "---\nname: example-mcp-skill\ndescription: Existing useful text.\nsource-sha256: " + sha256Hex(source) + "\nfrontmatter-generator: " + generatedClaudeSkillFrontmatter + "\nfrontmatter-model: fallback\n---\n\n<!-- " + generatedClaudeSkillMarker + " -->\n"
+	if err := os.WriteFile(skillPath, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := syncClaudeSkills(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "unchanged" {
+		t.Fatalf("results = %#v, want unchanged", results)
+	}
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != existing {
+		t.Fatalf("existing generated skill was rewritten:\n%s", data)
+	}
+}
+
+func TestSyncClaudeSkillReplacesMatchingSymlinkWithGeneratedWrapper(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	claudeSkill := filepath.Join(home, ".claude", "skills", "example-mcp-skill")
+	codexSkillsRoot := filepath.Join(home, ".codex", "skills")
+	if err := os.MkdirAll(claudeSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(codexSkillsRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(claudeSkill, "SKILL.md")
+	if err := os.WriteFile(sourcePath, []byte("# Release Workflow\n1. Run tests.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(codexSkillsRoot, "example-mcp-skill")
+	if err := os.Symlink(claudeSkill, dest); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := syncClaudeSkills(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "created" {
+		t.Fatalf("results = %#v, want one created skill", results)
+	}
+	info, err := os.Lstat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("dest is still a symlink")
+	}
+	data, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), generatedClaudeSkillMarker) {
+		t.Fatalf("generated skill missing marker:\n%s", data)
 	}
 }
 
 func TestSyncClaudeSkillDoesNotOverwriteExistingCodexSkill(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
 	home := t.TempDir()
 	claudeSkill := filepath.Join(home, ".claude", "skills", "example-mcp-skill")
 	codexSkill := filepath.Join(home, ".codex", "skills", "example-mcp-skill")
@@ -128,5 +252,43 @@ func TestSyncClaudeSkillDoesNotOverwriteExistingCodexSkill(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].Status != "skipped" {
 		t.Fatalf("results = %#v, want skipped", results)
+	}
+}
+
+func TestSyncClaudeSkillsQuietProgressOnlyForGeneratedWrappers(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	for _, name := range []string{"alpha-skill", "beta-skill"} {
+		claudeSkill := filepath.Join(home, ".claude", "skills", name)
+		if err := os.MkdirAll(claudeSkill, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(claudeSkill, "SKILL.md"), []byte("# "+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var progress bytes.Buffer
+	results, err := syncClaudeSkillsWithProgress(home, &progress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results = %#v, want two skills", results)
+	}
+	out := progress.String()
+	if !strings.Contains(out, "generating frontmatter for alpha-skill [1/2 skills]") {
+		t.Fatalf("progress missing alpha start:\n%s", out)
+	}
+	if !strings.Contains(out, "generated frontmatter for beta-skill [2/2 skills done]") {
+		t.Fatalf("progress missing beta completion:\n%s", out)
+	}
+
+	progress.Reset()
+	if _, err := syncClaudeSkillsWithProgress(home, &progress); err != nil {
+		t.Fatal(err)
+	}
+	if progress.String() != "" {
+		t.Fatalf("unchanged sync emitted progress:\n%s", progress.String())
 	}
 }

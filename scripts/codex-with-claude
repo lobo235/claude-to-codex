@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+launcher_name="$(basename "$0")"
 
 find_root() {
   local dir="$PWD"
@@ -18,21 +19,119 @@ find_root() {
   done
 }
 
+find_repo_dir() {
+  if [[ -n "${CLAUDE_TO_CODEX_REPO_DIR:-}" && -x "$CLAUDE_TO_CODEX_REPO_DIR/install.sh" ]]; then
+    printf '%s\n' "$CLAUDE_TO_CODEX_REPO_DIR"
+    return 0
+  fi
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -x "$script_dir/../install.sh" ]]; then
+    cd "$script_dir/.." && pwd
+    return 0
+  fi
+  if [[ -x "$HOME/dev/claude-to-codex/install.sh" ]]; then
+    printf '%s\n' "$HOME/dev/claude-to-codex"
+    return 0
+  fi
+  return 1
+}
+
+run_repo_script() {
+  local script_name="$1"
+  shift
+  local repo_dir
+  if ! repo_dir="$(find_repo_dir)"; then
+    printf '%s: could not find claude-to-codex checkout. Set CLAUDE_TO_CODEX_REPO_DIR=/path/to/claude-to-codex and retry.\n' "$launcher_name" >&2
+    exit 1
+  fi
+  exec "$repo_dir/$script_name" "$@"
+}
+
+cwc_version() {
+  if command -v claude-to-codex >/dev/null 2>&1; then
+    claude-to-codex --version
+    return 0
+  fi
+  local repo_dir
+  if repo_dir="$(find_repo_dir)" && [[ -x "$repo_dir/bin/claude-to-codex" ]]; then
+    "$repo_dir/bin/claude-to-codex" --version
+    return 0
+  fi
+  printf '%s version unknown: claude-to-codex is not on PATH\n' "$launcher_name"
+}
+
+print_help() {
+  if command -v codex >/dev/null 2>&1; then
+    codex --help || true
+  else
+    printf 'codex help unavailable: codex is not on PATH\n'
+  fi
+  cat <<'HELP'
+
+cwc-specific options:
+  cwc --doctor        Check setup and print next steps
+  cwc --status        Print concise setup status
+  cwc --smoke-test    Verify configured Claude MCP servers can connect
+  cwc --install       Run this project's install.sh
+  cwc --uninstall     Run this project's uninstall.sh
+  cwc --version       Print claude-to-codex version and exit
+  cwc --help          Print codex help plus this cwc section
+  cwc -- <args...>    Pass args through to codex, even if they match a cwc option
+
+Any other arguments are passed through to codex.
+HELP
+}
+
+case "${1:-}" in
+  --doctor)
+    shift
+    exec claude-to-codex doctor "$@"
+    ;;
+  --status)
+    shift
+    exec claude-to-codex status "$@"
+    ;;
+  --smoke-test)
+    shift
+    exec claude-to-codex smoke-test "$@"
+    ;;
+  --install)
+    shift
+    run_repo_script install.sh "$@"
+    ;;
+  --uninstall)
+    shift
+    run_repo_script uninstall.sh "$@"
+    ;;
+  --version)
+    cwc_version
+    exit 0
+    ;;
+  --help)
+    print_help
+    exit 0
+    ;;
+  --)
+    shift
+    ;;
+esac
+
 export CLAUDE_BRIDGE_PROJECT_ROOT="${CLAUDE_BRIDGE_PROJECT_ROOT:-$(find_root)}"
 
 if command -v claude-to-codex >/dev/null 2>&1; then
   if ! claude-to-codex sync-skills --quiet; then
-    printf 'codex-with-claude: warning: failed to sync Claude skills into Codex skills\n' >&2
+    printf '%s: warning: failed to sync Claude skills into Codex skills\n' "$launcher_name" >&2
   fi
   if ! claude-to-codex sync-commands --quiet; then
-    printf 'codex-with-claude: warning: failed to sync Claude slash commands into Codex skills\n' >&2
+    printf '%s: warning: failed to sync Claude slash commands into Codex skills\n' "$launcher_name" >&2
   fi
 else
-  printf 'codex-with-claude: warning: claude-to-codex is not on PATH; Claude artifacts were not synced\n' >&2
+  printf '%s: warning: claude-to-codex is not on PATH; Claude artifacts were not synced\n' "$launcher_name" >&2
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
-  printf 'codex-with-claude: codex is not on PATH\n' >&2
+  printf '%s: codex is not on PATH\n' "$launcher_name" >&2
   exit 127
 fi
 

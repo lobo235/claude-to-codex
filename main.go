@@ -18,7 +18,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		fatalf("usage: %s serve|inspect|sync-commands|sync-skills|version", os.Args[0])
+		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|sync-commands|sync-skills|version", os.Args[0])
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	switch os.Args[1] {
@@ -28,6 +28,18 @@ func main() {
 		}
 	case "inspect":
 		if err := runInspect(os.Args[2:], logger); err != nil {
+			fatalf("%v", err)
+		}
+	case "doctor":
+		if err := runDoctor(os.Args[2:], logger); err != nil {
+			fatalf("%v", err)
+		}
+	case "status":
+		if err := runStatus(os.Args[2:], logger); err != nil {
+			fatalf("%v", err)
+		}
+	case "smoke-test":
+		if err := runSmokeTest(os.Args[2:], logger); err != nil {
 			fatalf("%v", err)
 		}
 	case "sync-commands":
@@ -55,17 +67,14 @@ func runServe(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	proxy := newProxyServer(logger)
-	if err := proxy.connectChildren(ctx, servers); err != nil {
+	if err := proxy.connectChildren(context.Background(), servers); err != nil {
 		return err
 	}
 	defer proxy.close()
 
 	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "claude-bridge", Version: version}, proxy.serverOptions())
-	if err := proxy.register(ctx, srv); err != nil {
+	if err := proxy.register(context.Background(), srv); err != nil {
 		return err
 	}
 	logger.Info("starting Codex Claude MCP bridge", "project_root", projectRoot, "connected_children", len(proxy.children), "configured_children", len(servers))
@@ -125,14 +134,12 @@ func runInspect(args []string, logger *slog.Logger) error {
 		out.Servers = append(out.Servers, serverOut{Name: server.Name, Scope: server.Scope, Kind: kind, Command: server.Config.Command, URL: server.Config.URL, WorkDir: server.WorkDir})
 	}
 	if includeTools {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
 		proxy := newProxyServer(logger)
-		for _, failure := range proxy.connectChildrenBestEffort(ctx, servers) {
+		for _, failure := range proxy.connectChildrenBestEffort(context.Background(), servers) {
 			out.Errors = append(out.Errors, errorOut{Server: failure.server.Name, Scope: failure.server.Scope, Operation: failure.operation, Error: failure.err.Error()})
 		}
 		defer proxy.close()
-		tools, failures := proxy.inspectTools(ctx)
+		tools, failures := proxy.inspectTools(context.Background())
 		for _, failure := range failures {
 			out.Errors = append(out.Errors, errorOut{Server: failure.server.Name, Scope: failure.server.Scope, Operation: failure.operation, Error: failure.err.Error()})
 		}
@@ -151,6 +158,18 @@ func mustGetwd() string {
 		return "."
 	}
 	return wd
+}
+
+func bridgeOperationTimeout() time.Duration {
+	value := os.Getenv("CLAUDE_BRIDGE_OPERATION_TIMEOUT")
+	if value == "" {
+		return 30 * time.Second
+	}
+	timeout, err := time.ParseDuration(value)
+	if err != nil || timeout <= 0 {
+		return 30 * time.Second
+	}
+	return timeout
 }
 
 func currentProjectRoot() string {

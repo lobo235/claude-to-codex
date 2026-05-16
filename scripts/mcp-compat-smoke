@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/mcp-compat-smoke [--config path/to/mcp.json] [--project-config path/to/.mcp.json] [--no-build]
+
+Runs claude-to-codex against an isolated temporary HOME and project root.
+The config file must use Claude's normal shape:
+
+  {"mcpServers":{"name":{"command":"npx","args":["-y","pkg"]}}}
+
+If --config is omitted, a no-secret core matrix is generated with common public MCP servers.
+USAGE
+}
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+config_path=""
+project_config_path=""
+build=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)
+      config_path="${2:-}"
+      shift 2
+      ;;
+    --project-config)
+      project_config_path="${2:-}"
+      shift 2
+      ;;
+    --no-build)
+      build=0
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$build" -eq 1 ]]; then
+  make -C "$repo_root" build >/dev/null
+fi
+
+tmp="$(mktemp -d)"
+cleanup() {
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+home_dir="$tmp/home"
+project_dir="$tmp/project"
+allowed_dir="$tmp/allowed-files"
+mkdir -p "$home_dir" "$project_dir" "$allowed_dir"
+printf 'claude-bridge compatibility smoke fixture\n' >"$allowed_dir/example.txt"
+
+if [[ -n "$config_path" ]]; then
+  cp "$config_path" "$home_dir/.claude.json"
+else
+  cat >"$home_dir/.claude.json" <<JSON
+{
+  "mcpServers": {
+    "everything": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-everything"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--headless"]
+    },
+    "desktop-commander": {
+      "command": "npx",
+      "args": ["-y", "@wonderwhy-er/desktop-commander@latest"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "$allowed_dir"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "context7": {
+      "type": "streamable-http",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}
+JSON
+fi
+
+if [[ -n "$project_config_path" ]]; then
+  cp "$project_config_path" "$project_dir/.mcp.json"
+fi
+
+echo "Using isolated HOME=$home_dir"
+echo "Using isolated project root=$project_dir"
+echo
+
+HOME="$home_dir" \
+CLAUDE_BRIDGE_PROJECT_ROOT="$project_dir" \
+CLAUDE_BRIDGE_OPERATION_TIMEOUT="${CLAUDE_BRIDGE_OPERATION_TIMEOUT:-180s}" \
+"$repo_root/bin/claude-to-codex" inspect --tools
