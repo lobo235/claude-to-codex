@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ type fakeToolOutput struct {
 	Server string `json:"server"`
 	Tool   string `json:"tool"`
 	CWD    string `json:"cwd"`
+	Env    string `json:"env,omitempty"`
 }
 
 func TestMain(m *testing.M) {
@@ -51,7 +53,18 @@ func TestProxyListsAndCallsUserProjectAndCollisionTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	sort.Strings(names)
-	wantNames := []string{"project__shared", "project_only", "user__shared", "user_only"}
+	wantNames := []string{
+		"project__env_AMBIENT_SECRET_TOKEN",
+		"project__env_CLAUDE_BRIDGE_PROJECT_ROOT",
+		"project__env_EXPLICIT_TOKEN",
+		"project__shared",
+		"project_only",
+		"user__env_AMBIENT_SECRET_TOKEN",
+		"user__env_CLAUDE_BRIDGE_PROJECT_ROOT",
+		"user__env_EXPLICIT_TOKEN",
+		"user__shared",
+		"user_only",
+	}
 	if got := stringsJoin(names); got != stringsJoin(wantNames) {
 		t.Fatalf("tool names = %v, want %v", names, wantNames)
 	}
@@ -100,6 +113,86 @@ func TestProxyContinuesWhenOneChildCannotConnect(t *testing.T) {
 	got := callFakeTool(t, ctx, session, "user_only")
 	if got.Server != "user" {
 		t.Fatalf("user_only server = %q, want user", got.Server)
+	}
+}
+
+func TestRestrictedChildEnvExcludesAmbientSecretsAndKeepsExplicitEnv(t *testing.T) {
+	t.Setenv("AMBIENT_SECRET_TOKEN", "ambient-secret")
+	t.Setenv("PATH", os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	proxy := newProxyServer(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err := proxy.connectChildren(ctx, []ScopedServer{{
+		Name:   "user",
+		Scope:  "user",
+		Config: MCPServerConfig{Command: os.Args[0], Env: map[string]string{fakeChildEnv: "user", "EXPLICIT_TOKEN": "explicit-secret"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.close()
+	session, closeSession := connectTestClient(t, ctx, proxy)
+	defer closeSession()
+
+	if got := callFakeTool(t, ctx, session, "env_EXPLICIT_TOKEN"); got.Env != "explicit-secret" {
+		t.Fatalf("explicit env = %q, want explicit-secret", got.Env)
+	}
+	if got := callFakeTool(t, ctx, session, "env_AMBIENT_SECRET_TOKEN"); got.Env != "" {
+		t.Fatalf("ambient secret leaked into restricted child env: %q", got.Env)
+	}
+}
+
+func TestPerServerInheritEnvAllowsAmbientEnv(t *testing.T) {
+	t.Setenv("AMBIENT_SECRET_TOKEN", "ambient-secret")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	proxy := newProxyServer(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err := proxy.connectChildren(ctx, []ScopedServer{{
+		Name:   "user",
+		Scope:  "user",
+		Config: MCPServerConfig{Command: os.Args[0], Env: map[string]string{fakeChildEnv: "user"}, InheritEnv: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.close()
+	session, closeSession := connectTestClient(t, ctx, proxy)
+	defer closeSession()
+
+	if got := callFakeTool(t, ctx, session, "env_AMBIENT_SECRET_TOKEN"); got.Env != "ambient-secret" {
+		t.Fatalf("ambient env = %q, want ambient-secret", got.Env)
+	}
+}
+
+func TestGlobalInheritEnvAllowsAmbientEnv(t *testing.T) {
+	t.Setenv("AMBIENT_SECRET_TOKEN", "ambient-secret")
+	t.Setenv(inheritEnvVar, "1")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	proxy := newProxyServer(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err := proxy.connectChildren(ctx, []ScopedServer{{
+		Name:   "user",
+		Scope:  "user",
+		Config: MCPServerConfig{Command: os.Args[0], Env: map[string]string{fakeChildEnv: "user"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.close()
+	session, closeSession := connectTestClient(t, ctx, proxy)
+	defer closeSession()
+
+	if got := callFakeTool(t, ctx, session, "env_AMBIENT_SECRET_TOKEN"); got.Env != "ambient-secret" {
+		t.Fatalf("ambient env = %q, want ambient-secret", got.Env)
+	}
+}
+
+func TestProjectChildReceivesProjectRootEnv(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	projectRoot := t.TempDir()
+	session, closeProxy := startTestProxy(t, ctx, []ScopedServer{fakeServer("project", "project", projectRoot)})
+	defer closeProxy()
+
+	if got := callFakeTool(t, ctx, session, "env_CLAUDE_BRIDGE_PROJECT_ROOT"); got.Env != projectRoot {
+		t.Fatalf("project root env = %q, want %q", got.Env, projectRoot)
 	}
 }
 
@@ -189,7 +282,18 @@ func TestInspectToolsReportsExposedToolsAndFailures(t *testing.T) {
 		names = append(names, tool.exposedName)
 	}
 	sort.Strings(names)
-	wantNames := []string{"project__shared", "project_only", "user__shared", "user_only"}
+	wantNames := []string{
+		"project__env_AMBIENT_SECRET_TOKEN",
+		"project__env_CLAUDE_BRIDGE_PROJECT_ROOT",
+		"project__env_EXPLICIT_TOKEN",
+		"project__shared",
+		"project_only",
+		"user__env_AMBIENT_SECRET_TOKEN",
+		"user__env_CLAUDE_BRIDGE_PROJECT_ROOT",
+		"user__env_EXPLICIT_TOKEN",
+		"user__shared",
+		"user_only",
+	}
 	if got := stringsJoin(names); got != stringsJoin(wantNames) {
 		t.Fatalf("inspect tools = %v, want %v", names, wantNames)
 	}
@@ -267,14 +371,18 @@ func callFakeTool(t *testing.T, ctx context.Context, session *mcpsdk.ClientSessi
 
 func runFakeChildServer(name string) error {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "fake-" + name, Version: "0"}, nil)
-	for _, toolName := range []string{name + "_only", "shared"} {
+	for _, toolName := range []string{name + "_only", "shared", "env_EXPLICIT_TOKEN", "env_AMBIENT_SECRET_TOKEN", "env_CLAUDE_BRIDGE_PROJECT_ROOT"} {
 		toolName := toolName
 		mcpsdk.AddTool[map[string]any, fakeToolOutput](server, &mcpsdk.Tool{Name: toolName, Description: "fake " + toolName}, func(ctx context.Context, req *mcpsdk.CallToolRequest, in map[string]any) (*mcpsdk.CallToolResult, fakeToolOutput, error) {
 			wd, err := os.Getwd()
 			if err != nil {
 				return nil, fakeToolOutput{}, err
 			}
-			return nil, fakeToolOutput{Server: name, Tool: req.Params.Name, CWD: wd}, nil
+			var envValue string
+			if key, ok := strings.CutPrefix(req.Params.Name, "env_"); ok {
+				envValue = os.Getenv(key)
+			}
+			return nil, fakeToolOutput{Server: name, Tool: req.Params.Name, CWD: wd, Env: envValue}, nil
 		})
 	}
 	return server.Run(context.Background(), &mcpsdk.StdioTransport{})

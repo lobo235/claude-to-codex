@@ -192,6 +192,45 @@ reports a confirmed false positive, prefer changing the example value;
 use `.gitleaksignore` only for a specific fingerprint that cannot be
 rewritten cleanly.
 
+## MCP Security
+
+Project `.mcp.json` files are trusted code: stdio MCP servers can run
+local commands. Run `cwc` only inside projects whose MCP configuration
+you trust.
+
+`claude-bridge` starts stdio MCP servers with a restricted environment
+by default. It passes a small non-secret baseline such as `PATH`,
+`HOME`, temp, locale, and certificate variables, then adds only the
+server's explicit `env` values from Claude MCP config. Ambient shell
+secrets such as cloud tokens, API keys, and database URLs are not passed
+to every child MCP process.
+
+If a legacy MCP server requires ambient shell environment variables,
+prefer opting in for only that server:
+
+```json
+{
+  "mcpServers": {
+    "legacy-tool": {
+      "command": "legacy-mcp",
+      "x-claude-bridge-inherit-env": true
+    }
+  }
+}
+```
+
+For temporary compatibility debugging, this global escape hatch restores
+full environment inheritance for all stdio MCP children:
+
+```bash
+CLAUDE_BRIDGE_INHERIT_ENV=1 cwc
+```
+
+HTTP MCP headers and stdio `env` values are never printed by normal
+diagnostics. Diagnostic URLs and error text are redacted for common
+token, key, secret, password, authorization, credential, and signature
+patterns.
+
 ## What It Does
 
 `claude-to-codex serve` starts a Codex-facing MCP server named `claude-bridge`.

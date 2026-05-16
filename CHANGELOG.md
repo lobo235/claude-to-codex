@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.1 - 2026-05-16
+
+### Security
+
+- Restrict stdio MCP child process environments by default. Child MCPs
+  receive only a small non-secret baseline plus explicit per-server
+  `env` values from Claude MCP config.
+- Add per-server env inheritance escape hatch:
+  `"x-claude-bridge-inherit-env": true`.
+- Add global compatibility escape hatch:
+  `CLAUDE_BRIDGE_INHERIT_ENV=1`.
+- Pass `CLAUDE_BRIDGE_PROJECT_ROOT` only to project-scoped child MCP
+  servers.
+- Redact common token, key, secret, password, authorization,
+  credential, session, and signature patterns from diagnostic URLs and
+  error output.
+- Document `.mcp.json` as trusted code and explain authenticated MCP
+  migration guidance.
+
 ## v0.1.0 - 2026-05-16
 
 Initial tagged release.

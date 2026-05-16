@@ -112,7 +112,7 @@ func collectDiagnosticReport(logger *slog.Logger, connect bool) (diagnosticRepor
 				Name:      failure.server.Name,
 				Scope:     failure.server.Scope,
 				Operation: failure.operation,
-				Error:     failure.err.Error(),
+				Error:     redactSensitive(failure.err.Error()),
 			})
 		}
 	}

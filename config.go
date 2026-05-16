@@ -18,12 +18,13 @@ type ProjectClaudeConfig struct {
 }
 
 type MCPServerConfig struct {
-	Type    string            `json:"type,omitempty"`
-	URL     string            `json:"url,omitempty"`
-	Command string            `json:"command,omitempty"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
-	Headers map[string]string `json:"headers,omitempty"`
+	Type       string            `json:"type,omitempty"`
+	URL        string            `json:"url,omitempty"`
+	Command    string            `json:"command,omitempty"`
+	Args       []string          `json:"args,omitempty"`
+	Env        map[string]string `json:"env,omitempty"`
+	Headers    map[string]string `json:"headers,omitempty"`
+	InheritEnv bool              `json:"x-claude-bridge-inherit-env,omitempty"`
 }
 
 type ScopedServer struct {

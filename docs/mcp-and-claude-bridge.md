@@ -17,6 +17,18 @@ cwc
 
 `cwc` starts Codex after syncing Claude skills and commands into Codex-compatible skill wrappers. It also sets the project root so project `.mcp.json` files are found.
 
+Project `.mcp.json` files are trusted code. A project-scoped stdio MCP
+server can run local commands, so use `cwc` only in projects whose MCP
+configuration you trust.
+
+For stdio MCP servers, `claude-bridge` does not pass the full shell
+environment by default. It passes a small non-secret baseline plus the
+server's explicit Claude MCP `env` values. If a legacy MCP server needs
+full environment inheritance, prefer the per-server
+`"x-claude-bridge-inherit-env": true` escape hatch; use
+`CLAUDE_BRIDGE_INHERIT_ENV=1` only for temporary all-server
+compatibility debugging.
+
 The Codex config entry looks like this:
 
 ```toml

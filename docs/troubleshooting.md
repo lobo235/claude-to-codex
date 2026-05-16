@@ -130,6 +130,13 @@ Common causes:
 - An HTTP MCP URL is unreachable.
 - HTTP MCP headers or auth values in the Claude config are stale.
 
+`claude-bridge` uses a restricted environment for stdio MCP servers by
+default. If a server needs a token or other credential, put that value
+in that server's Claude MCP `env` config. For legacy servers that cannot
+be configured that way, add `"x-claude-bridge-inherit-env": true` to
+that one server. Use `CLAUDE_BRIDGE_INHERIT_ENV=1` only as a temporary
+all-server compatibility escape hatch.
+
 If at least one child connects, `claude-to-codex` keeps running and skips the unavailable child. If all children fail, `claude-bridge` startup fails.
 
 ## Tools Have Unexpected Names

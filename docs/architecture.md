@@ -40,6 +40,24 @@ Project root detection prefers `CLAUDE_BRIDGE_PROJECT_ROOT`. If it is unset, `cl
 
 Project-scoped stdio MCP servers run with their working directory set to the detected project root.
 
+## MCP Child Environment
+
+Stdio child MCP servers run with a restricted environment by default.
+The bridge passes a small non-secret baseline (`PATH`, `HOME`, user,
+shell, temp, locale, and certificate variables), then overlays the
+server's explicit Claude MCP `env` values. Project-scoped servers also
+receive `CLAUDE_BRIDGE_PROJECT_ROOT`.
+
+Ambient shell secrets are not inherited by default. Compatibility
+escape hatches are available:
+
+- per-server: `"x-claude-bridge-inherit-env": true`
+- global: `CLAUDE_BRIDGE_INHERIT_ENV=1`
+
+Diagnostic output redacts common token, key, secret, password,
+authorization, credential, and signature patterns from URLs and errors.
+HTTP MCP headers and stdio env values are not printed.
+
 ## MCP Proxying
 
 Each Claude MCP server becomes a child MCP client session. `claude-to-codex` registers one Codex-facing MCP server and forwards requests to the correct child.

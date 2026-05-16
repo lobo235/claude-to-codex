@@ -44,6 +44,15 @@ Use a custom matrix with Claude's normal config shape:
 scripts/mcp-compat-smoke --config docs/mcp-compatibility.matrix.example.json
 ```
 
+For functional validation, build and run the probe. It connects through
+`claude-bridge`, lists tools, and calls a curated set of low-risk tools
+when present:
+
+```sh
+go build -o bin/mcp-compat-probe ./tools/mcp-compat-probe
+bin/mcp-compat-probe --help
+```
+
 Use a project-scoped fixture when validating a private MCP server:
 
 ```sh

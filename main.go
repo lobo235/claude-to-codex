@@ -131,17 +131,17 @@ func runInspect(args []string, logger *slog.Logger) error {
 		if server.Config.URL != "" || strings.EqualFold(server.Config.Type, "http") || strings.EqualFold(server.Config.Type, "streamable-http") {
 			kind = "http"
 		}
-		out.Servers = append(out.Servers, serverOut{Name: server.Name, Scope: server.Scope, Kind: kind, Command: server.Config.Command, URL: server.Config.URL, WorkDir: server.WorkDir})
+		out.Servers = append(out.Servers, serverOut{Name: server.Name, Scope: server.Scope, Kind: kind, Command: redactSensitive(server.Config.Command), URL: redactURL(server.Config.URL), WorkDir: server.WorkDir})
 	}
 	if includeTools {
 		proxy := newProxyServer(logger)
 		for _, failure := range proxy.connectChildrenBestEffort(context.Background(), servers) {
-			out.Errors = append(out.Errors, errorOut{Server: failure.server.Name, Scope: failure.server.Scope, Operation: failure.operation, Error: failure.err.Error()})
+			out.Errors = append(out.Errors, errorOut{Server: failure.server.Name, Scope: failure.server.Scope, Operation: failure.operation, Error: redactSensitive(failure.err.Error())})
 		}
 		defer proxy.close()
 		tools, failures := proxy.inspectTools(context.Background())
 		for _, failure := range failures {
-			out.Errors = append(out.Errors, errorOut{Server: failure.server.Name, Scope: failure.server.Scope, Operation: failure.operation, Error: failure.err.Error()})
+			out.Errors = append(out.Errors, errorOut{Server: failure.server.Name, Scope: failure.server.Scope, Operation: failure.operation, Error: redactSensitive(failure.err.Error())})
 		}
 		for _, tool := range tools {
 			out.Tools = append(out.Tools, toolOut{Name: tool.exposedName, OriginalName: tool.originalName, Server: tool.server.Name, Scope: tool.server.Scope})

@@ -37,6 +37,46 @@ func TestLoadClaudeServersKeepsUserAndProjectScope(t *testing.T) {
 	}
 }
 
+func TestLoadClaudeServersOnlyLoadsRequestedProjectRoot(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	projectA := filepath.Join(tmp, "project-a")
+	projectB := filepath.Join(tmp, "project-b")
+	for _, dir := range []string{home, projectA, projectB} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(projectA, ".mcp.json"), []byte(`{"mcpServers":{"project-a-tools":{"command":"project-a-mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectB, ".mcp.json"), []byte(`{"mcpServers":{"project-b-tools":{"command":"project-b-mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	servers, err := loadClaudeServers(home, projectA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("got %d servers, want 1", len(servers))
+	}
+	if servers[0].Name != "project-a-tools" || servers[0].Scope != "project" || servers[0].WorkDir != projectA {
+		t.Fatalf("server = %#v, want only project-a server scoped to project-a", servers[0])
+	}
+
+	servers, err = loadClaudeServers(home, projectB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("got %d servers, want 1", len(servers))
+	}
+	if servers[0].Name != "project-b-tools" || servers[0].Scope != "project" || servers[0].WorkDir != projectB {
+		t.Fatalf("server = %#v, want only project-b server scoped to project-b", servers[0])
+	}
+}
+
 func TestNameMapperPreservesUniqueAndPrefixesCollisions(t *testing.T) {
 	mapper := newNameMapper([]string{"wiki_get", "status", "status"})
 	if got := mapper.exposed("wiki", "wiki_get"); got != "wiki_get" {
@@ -44,6 +84,21 @@ func TestNameMapperPreservesUniqueAndPrefixesCollisions(t *testing.T) {
 	}
 	if got := mapper.exposed("project-tools", "status"); got != "project-tools__status" {
 		t.Fatalf("collision name = %q", got)
+	}
+}
+
+func TestReadMCPServersParsesBridgeInheritEnvExtension(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, ".mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers":{"legacy":{"command":"legacy-mcp","x-claude-bridge-inherit-env":true}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := readMCPServers(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !servers["legacy"].InheritEnv {
+		t.Fatalf("inherit env extension was not parsed: %#v", servers["legacy"])
 	}
 }
 

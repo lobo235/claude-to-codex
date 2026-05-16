@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -75,7 +74,7 @@ func (p *proxyServer) connectChildren(ctx context.Context, servers []ScopedServe
 	}
 	if len(p.children) > 0 {
 		for _, failure := range failures {
-			p.logger.Warn("skipping unavailable Claude MCP server", "scope", failure.server.Scope, "name", failure.server.Name, "operation", failure.operation, "error", failure.err)
+			p.logger.Warn("skipping unavailable Claude MCP server", "scope", failure.server.Scope, "name", failure.server.Name, "operation", failure.operation, "error", redactSensitive(failure.err.Error()))
 		}
 		return nil
 	}
@@ -146,10 +145,7 @@ func connectChildSession(ctx context.Context, server ScopedServer) (*mcpsdk.Clie
 		return nil, fmt.Errorf("missing command or url")
 	}
 	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
-	cmd.Env = os.Environ()
-	for key, value := range cfg.Env {
-		cmd.Env = append(cmd.Env, key+"="+value)
-	}
+	cmd.Env = buildChildEnv(server)
 	if server.WorkDir != "" {
 		cmd.Dir = server.WorkDir
 	}
@@ -159,7 +155,7 @@ func connectChildSession(ctx context.Context, server ScopedServer) (*mcpsdk.Clie
 func connectFailuresError(failures []childFailure) error {
 	var parts []string
 	for _, failure := range failures {
-		parts = append(parts, fmt.Sprintf("%s-scope MCP server %q %s: %v", failure.server.Scope, failure.server.Name, failure.operation, failure.err))
+		parts = append(parts, fmt.Sprintf("%s-scope MCP server %q %s: %s", failure.server.Scope, failure.server.Name, failure.operation, redactSensitive(failure.err.Error())))
 	}
 	return fmt.Errorf("no Claude MCP child servers available: %s", strings.Join(parts, "; "))
 }
@@ -233,7 +229,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 		tools, err := collectTools(toolsCtx, child.session)
 		cancelTools()
 		if err != nil {
-			p.logger.Warn("child tools unavailable", "scope", child.Scope, "server", child.Name, "error", err)
+			p.logger.Warn("child tools unavailable", "scope", child.Scope, "server", child.Name, "error", redactSensitive(err.Error()))
 		} else {
 			childTools[child] = tools
 			for _, tool := range tools {
@@ -250,7 +246,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 				promptNames = append(promptNames, prompt.Name)
 			}
 		} else {
-			p.logger.Debug("child prompts unavailable", "server", child.Name, "error", err)
+			p.logger.Debug("child prompts unavailable", "server", child.Name, "error", redactSensitive(err.Error()))
 		}
 	}
 
@@ -303,7 +299,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 				})
 			}
 		} else {
-			p.logger.Debug("child resources unavailable", "server", child.Name, "error", err)
+			p.logger.Debug("child resources unavailable", "server", child.Name, "error", redactSensitive(err.Error()))
 		}
 
 		templatesCtx, cancelTemplates := p.operationContext(ctx)
@@ -323,7 +319,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 				})
 			}
 		} else {
-			p.logger.Debug("child resource templates unavailable", "server", child.Name, "error", err)
+			p.logger.Debug("child resource templates unavailable", "server", child.Name, "error", redactSensitive(err.Error()))
 		}
 	}
 
