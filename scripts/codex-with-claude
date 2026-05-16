@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+find_root() {
+  local dir="$PWD"
+  while true; do
+    if [[ -e "$dir/.mcp.json" || -e "$dir/CLAUDE.md" || -d "$dir/.git" ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    local parent
+    parent="$(dirname "$dir")"
+    if [[ "$parent" == "$dir" ]]; then
+      printf '%s\n' "$PWD"
+      return 0
+    fi
+    dir="$parent"
+  done
+}
+
+export CLAUDE_BRIDGE_PROJECT_ROOT="${CLAUDE_BRIDGE_PROJECT_ROOT:-$(find_root)}"
+
+if command -v claude-to-codex >/dev/null 2>&1; then
+  if ! claude-to-codex sync-skills --quiet; then
+    printf 'codex-with-claude: warning: failed to sync Claude skills into Codex skills\n' >&2
+  fi
+  if ! claude-to-codex sync-commands --quiet; then
+    printf 'codex-with-claude: warning: failed to sync Claude slash commands into Codex skills\n' >&2
+  fi
+else
+  printf 'codex-with-claude: warning: claude-to-codex is not on PATH; Claude artifacts were not synced\n' >&2
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  printf 'codex-with-claude: codex is not on PATH\n' >&2
+  exit 127
+fi
+
+exec codex "$@"
