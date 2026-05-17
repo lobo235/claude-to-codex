@@ -63,7 +63,7 @@ A complete setup has all of these:
 - `claude-to-codex`, `cwc`, and `codex-with-claude` installed on `PATH`
 - Codex installed and logged in
 - Codex MCP entry `claude-bridge` configured to run `claude-to-codex serve`
-- Claude skills and slash commands synced into generated Codex skill wrappers
+- Claude skills, agents, and slash commands synced into generated Codex artifacts
 - `cwc --doctor`, `cwc --status`, and `cwc --smoke-test` run without unexpected failures
 - daily use is simply `cwc` from inside a project
 
@@ -147,6 +147,7 @@ Lower-level checks:
 claude-to-codex inspect
 claude-to-codex inspect --tools
 claude-to-codex sync-skills
+claude-to-codex sync-agents
 claude-to-codex sync-commands
 ```
 
@@ -243,17 +244,22 @@ When Codex connects to `claude-bridge`, `claude-to-codex`:
 4. Connects to each configured Claude MCP server as a child MCP client.
 5. Re-exposes child tools, prompts, resources, resource templates, completions, subscriptions, and reads through one Codex MCP server.
 
-The `cwc` launcher also syncs Claude user artifacts before launching Codex:
+The `cwc` launcher also syncs Claude user and project artifacts before launching Codex:
 
 - `~/.claude/skills/<name>/SKILL.md` is mirrored into a generated Codex-compatible wrapper at `~/.codex/skills/<name>/SKILL.md`.
+- `~/.claude/agents/*.md` is mirrored into generated Codex agent TOML under `~/.codex/agents/*.toml`.
+- `<project>/.claude/agents/*.md` is mirrored into generated Codex agent TOML under `<project>/.codex/agents/*.toml`.
 - `~/.claude/commands/*.md` is mirrored into generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
 
-Generated skill wrappers point back to the Claude source. Claude remains canonical. Hand-written Codex skills are not overwritten. Skill wrapper frontmatter is generated with `codex exec` using a fast model, then cached by source hash so unchanged skills are not rewritten on every launch.
+Generated skill wrappers and agent TOML files point back to the Claude source. Claude remains canonical. Hand-written Codex skills and agents are not overwritten. Descriptions are generated with `codex exec` using a fast model, then cached by source hash so unchanged artifacts are not rewritten on every launch. The generator receives only Claude metadata and a bounded, sanitized preview, not the full skill or agent body.
 
-When `cwc` has to generate frontmatter, it prints progress such as:
+Set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL` to override the default fast model, or set `CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER=1` to force deterministic fallback descriptions.
+
+When `cwc` has to generate frontmatter or agent descriptions, it prints progress such as:
 
 ```text
 generating frontmatter for <skill_name> [1/20 skills]
+generating description for agent <agent_name> [1/3 agents]
 ```
 
 ## For Agents
@@ -280,7 +286,7 @@ For a preview:
 cwc --uninstall --dry-run
 ```
 
-The uninstaller removes installed `claude-to-codex`/`cwc` commands, generated Codex skill wrappers containing `generated-by: claude-to-codex`, and the `claude-bridge` MCP entry only when it points at `claude-to-codex`. It does not remove unrelated Codex config, auth, agents, plugins, MCP entries, hand-written skills, or Claude Code files.
+The uninstaller removes installed `claude-to-codex`/`cwc` commands, generated Codex skill wrappers and agents containing `generated-by: claude-to-codex`, and the `claude-bridge` MCP entry only when it points at `claude-to-codex`. It does not remove unrelated Codex config, auth, agents, plugins, MCP entries, hand-written skills, or Claude Code files.
 
 ## Tool Names
 
@@ -309,7 +315,7 @@ Calls are routed back to the original child server and original tool name.
 
 Treat `inspect --tools` like starting your MCP servers: it may execute local stdio MCP commands or connect to HTTP MCP endpoints configured in Claude.
 
-Review generated Codex skills before relying on them. The generated skill wrappers instruct Codex to read the Claude source at use time.
+Review generated Codex skills and agents before relying on them. The generated artifacts instruct Codex to use the Claude source as canonical context.
 
 ## Development
 

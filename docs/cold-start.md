@@ -154,20 +154,23 @@ args = ["serve"]
 
 Restart Codex after changing MCP config.
 
-## Sync Claude Skills And Commands
+## Sync Claude Skills, Agents, And Commands
 
 Run:
 
 ```bash
 claude-to-codex sync-skills
+claude-to-codex sync-agents
 claude-to-codex sync-commands
 ```
 
-These commands are safe to repeat. They do not overwrite hand-written Codex skills.
+These commands are safe to repeat. They do not overwrite hand-written Codex skills or agents.
 
-`sync-skills` writes generated Codex-compatible wrappers, so Claude skills with missing or incompatible frontmatter can still load in Codex. It uses `codex exec` with a fast model to generate useful frontmatter descriptions, then records a source hash so reruns are idempotent. If an older bridge version created matching skill symlinks, `sync-skills` replaces those symlinks with generated wrappers.
+`sync-skills` writes generated Codex-compatible wrappers, so Claude skills with missing or incompatible frontmatter can still load in Codex. It uses `codex exec` with a fast model to generate useful frontmatter descriptions from Claude metadata and a bounded, sanitized preview, then records a source hash so reruns are idempotent. If an older bridge version created matching skill symlinks, `sync-skills` replaces those symlinks with generated wrappers.
 
 The first `cwc` launch may print progress while frontmatter is generated, such as `generating frontmatter for <skill_name> [1/20 skills]`. Later launches stay quiet when nothing changed.
+
+`sync-agents` converts Claude agents from `~/.claude/agents/*.md` into Codex subagent TOML files at `~/.codex/agents/*.toml`. When launched through `cwc`, project agents from `.claude/agents/*.md` are also synced into `.codex/agents/*.toml` for the current project. Agent descriptions are generated from bounded previews and cached by source hash.
 
 ## Verify Claude MCP Servers
 
@@ -195,7 +198,7 @@ test -f .mcp.json && echo "project MCP config exists"
 cwc
 ```
 
-Use `cwc` instead of `codex` for normal project launches. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT`, syncs Claude skills and slash commands, then starts Codex. `codex-with-claude` remains available as the explicit long-form alias.
+Use `cwc` instead of `codex` for normal project launches. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT`, syncs Claude skills, agents, and slash commands, then starts Codex. `codex-with-claude` remains available as the explicit long-form alias.
 
 Inside Codex, ask it to list or inspect available MCP tools. You should see tools exposed by the `claude-bridge` MCP server.
 

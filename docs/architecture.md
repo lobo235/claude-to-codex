@@ -4,7 +4,7 @@
 
 1. Load Claude MCP configuration.
 2. Proxy MCP capabilities from child servers to Codex.
-3. Mirror Claude user artifacts into Codex skill entries.
+3. Mirror Claude user and project artifacts into Codex entries.
 
 ## Naming
 
@@ -19,6 +19,7 @@
 claude-to-codex serve
 claude-to-codex inspect [--tools]
 claude-to-codex sync-skills
+claude-to-codex sync-agents [--project <dir>|--project-only <dir>]
 claude-to-codex sync-commands
 claude-to-codex version
 ```
@@ -27,7 +28,7 @@ claude-to-codex version
 
 `inspect` is for diagnostics and setup validation.
 
-`sync-skills` and `sync-commands` are safe to run repeatedly.
+`sync-skills`, `sync-agents`, and `sync-commands` are safe to run repeatedly.
 
 ## Config Loading
 
@@ -89,14 +90,20 @@ If all configured child servers fail, `serve` exits with an error.
 
 Claude skills are converted into generated Codex-compatible skill wrappers. The generated file supplies valid Codex frontmatter, points back to the Claude `SKILL.md`, and includes a source snapshot so Claude skills with missing or incompatible frontmatter still load in Codex.
 
-`sync-skills` asks `codex exec` to generate a concise, useful `description` with a fast model. Set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL` to override the default model, or `CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER=1` to use deterministic fallback descriptions. Generated wrappers include `source-sha256`; if the source hash is unchanged, the wrapper is left untouched.
+`sync-skills` asks `codex exec` to generate a concise, useful `description` with a fast model. The generator receives only Claude metadata and a bounded, sanitized preview, not the full skill body, and it runs from a temporary directory. Set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL` to override the default model, or `CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER=1` to use deterministic fallback descriptions. Generated wrappers include `source-sha256`; if the source hash is unchanged, the wrapper is left untouched.
 
 When a skill wrapper needs generated frontmatter, `sync-skills --quiet` still writes progress to stderr so `cwc` is not silent during slow first-run work. It stays silent for unchanged wrappers.
+
+Claude agents are converted into generated Codex subagent TOML files. User agents from `~/.claude/agents/*.md` sync to `~/.codex/agents/*.toml`. Project agents from `<project>/.claude/agents/*.md` sync to `<project>/.codex/agents/*.toml` when `sync-agents --project <dir>` runs through `cwc`.
+
+Generated agent filenames keep Claude's hyphenated filename, while the Codex `name` field uses underscores. Claude `tools` frontmatter is preserved as advisory instruction text, not converted into Codex permissions. Generated agents omit `model`, `model_reasoning_effort`, and `sandbox_mode` so they inherit the active Codex session.
+
+`sync-agents` updates and deletes only generated TOML files containing the claude-to-codex marker. Hand-written Codex agents are skipped. Sparse agent descriptions use the same bounded preview generation path as skills; slow generation writes progress to stderr in quiet mode.
 
 Claude slash commands are converted into generated Codex skill wrappers. Generated files include a marker so `claude-to-codex` can update its own output without overwriting hand-written Codex skills.
 
 ## Install And Uninstall Boundaries
 
-Install writes only `claude-to-codex` and launcher commands into `PREFIX/bin` and tells the user how to configure `claude-bridge`. Uninstall removes only claude-to-codex-owned commands, generated skill wrappers containing the claude-to-codex marker, and the `claude-bridge` MCP entry when it points at `claude-to-codex`.
+Install writes only `claude-to-codex` and launcher commands into `PREFIX/bin` and tells the user how to configure `claude-bridge`. Uninstall removes only claude-to-codex-owned commands, generated skill wrappers and agents containing the claude-to-codex marker, and the `claude-bridge` MCP entry when it points at `claude-to-codex`.
 
 Uninstall must not remove unrelated Codex config, auth, agents, plugins, MCP entries, hand-written skills, or Claude Code files. All install, uninstall, config, and sync paths are intended to be idempotent for repeated testing.

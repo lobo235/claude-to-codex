@@ -123,6 +123,9 @@ if command -v claude-to-codex >/dev/null 2>&1; then
   if ! claude-to-codex sync-skills --quiet; then
     printf '%s: warning: failed to sync Claude skills into Codex skills\n' "$launcher_name" >&2
   fi
+  if ! claude-to-codex sync-agents --quiet --project "$CLAUDE_BRIDGE_PROJECT_ROOT"; then
+    printf '%s: warning: failed to sync Claude agents into Codex agents\n' "$launcher_name" >&2
+  fi
   if ! claude-to-codex sync-commands --quiet; then
     printf '%s: warning: failed to sync Claude slash commands into Codex skills\n' "$launcher_name" >&2
   fi

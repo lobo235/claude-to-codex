@@ -111,7 +111,28 @@ func redactURL(raw string) string {
 		}
 	}
 	u.RawQuery = query.Encode()
+	u.Path = redactSensitivePath(u.Path)
 	return u.String()
+}
+
+func redactSensitivePath(path string) string {
+	segments := strings.Split(path, "/")
+	for i := 1; i < len(segments); i++ {
+		previous := segments[i-1]
+		if sensitiveName(previous) {
+			segments[i] = "[REDACTED]"
+			continue
+		}
+		segments[i] = redactSensitiveSegment(segments[i])
+	}
+	return strings.Join(segments, "/")
+}
+
+func redactSensitiveSegment(segment string) string {
+	if strings.Contains(segment, "=") {
+		return redactSensitive(segment)
+	}
+	return segment
 }
 
 func redactSensitiveQuery(raw string) string {

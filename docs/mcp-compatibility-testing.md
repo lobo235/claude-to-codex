@@ -29,6 +29,10 @@ The script builds `bin/claude-to-codex`, creates an isolated temporary
 claude-to-codex inspect --tools
 ```
 
+The built-in npm-based servers are pinned to exact package versions, but
+the smoke script still executes registry packages as your local user. It
+uses an isolated temporary `HOME`; it is not an OS sandbox.
+
 The built-in matrix currently covers Everything, Chrome DevTools,
 Context7, Desktop Commander, Filesystem, Memory, Playwright, and
 Sequential Thinking. Expand it with `--config` when testing servers

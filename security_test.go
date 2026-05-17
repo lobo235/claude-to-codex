@@ -50,8 +50,8 @@ func TestBuildChildEnvGlobalInheritEnv(t *testing.T) {
 }
 
 func TestRedactURL(t *testing.T) {
-	got := redactURL("https://user:pass@example.com/mcp?token=abc&library=react&signature=def")
-	if strings.Contains(got, "user") || strings.Contains(got, "pass") || strings.Contains(got, "abc") || strings.Contains(got, "def") {
+	got := redactURL("https://user:pass@example.com/token/pathsecret/mcp?token=abc&library=react&signature=def")
+	if strings.Contains(got, "user") || strings.Contains(got, "pass") || strings.Contains(got, "abc") || strings.Contains(got, "def") || strings.Contains(got, "pathsecret") {
 		t.Fatalf("url was not redacted: %s", got)
 	}
 	if !strings.Contains(got, "library=react") {

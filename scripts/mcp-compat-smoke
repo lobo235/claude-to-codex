@@ -12,6 +12,8 @@ The config file must use Claude's normal shape:
   {"mcpServers":{"name":{"command":"npx","args":["-y","pkg"]}}}
 
 If --config is omitted, a no-secret core matrix is generated with common public MCP servers.
+The built-in matrix executes pinned npm packages with npx in an isolated HOME,
+but not in an OS sandbox.
 USAGE
 }
 
@@ -66,36 +68,36 @@ if [[ -n "$config_path" ]]; then
   cp "$config_path" "$home_dir/.claude.json"
 else
   cat >"$home_dir/.claude.json" <<JSON
-{
-  "mcpServers": {
-    "everything": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-everything"]
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest", "--headless"]
-    },
-    "desktop-commander": {
-      "command": "npx",
-      "args": ["-y", "@wonderwhy-er/desktop-commander@latest"]
-    },
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "$allowed_dir"]
-    },
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--headless"]
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    },
+	{
+	  "mcpServers": {
+	    "everything": {
+	      "command": "npx",
+	      "args": ["-y", "@modelcontextprotocol/server-everything@2026.1.26"]
+	    },
+	    "chrome-devtools": {
+	      "command": "npx",
+	      "args": ["-y", "chrome-devtools-mcp@0.26.0", "--headless"]
+	    },
+	    "desktop-commander": {
+	      "command": "npx",
+	      "args": ["-y", "@wonderwhy-er/desktop-commander@0.2.41"]
+	    },
+	    "filesystem": {
+	      "command": "npx",
+	      "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.1.14", "$allowed_dir"]
+	    },
+	    "memory": {
+	      "command": "npx",
+	      "args": ["-y", "@modelcontextprotocol/server-memory@2026.1.26"]
+	    },
+	    "playwright": {
+	      "command": "npx",
+	      "args": ["-y", "@playwright/mcp@0.0.75", "--headless"]
+	    },
+	    "sequential-thinking": {
+	      "command": "npx",
+	      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2025.12.18"]
+	    },
     "context7": {
       "type": "streamable-http",
       "url": "https://mcp.context7.com/mcp"

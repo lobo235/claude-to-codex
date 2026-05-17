@@ -1,5 +1,45 @@
 # Changelog
 
+## [Unreleased]
+
+## [v0.2.0] - 2026-05-16
+
+### Added
+
+- Add `sync-agents` to bridge Claude Code agents into Codex subagent TOML
+  files.
+- Sync user-scoped Claude agents from `~/.claude/agents/*.md` to
+  `~/.codex/agents/*.toml`.
+- Sync project-scoped Claude agents from `.claude/agents/*.md` to
+  `.codex/agents/*.toml` when launched through `cwc`.
+- Show Claude agent and generated Codex agent counts in `cwc --status`
+  and `cwc --doctor`.
+
+### Changed
+
+- Run `sync-agents` during `cwc` startup after skill sync and before
+  slash-command sync.
+- Generate skill and agent descriptions from Claude metadata plus a
+  bounded, sanitized preview instead of full source bodies.
+- Keep generated Codex agent filenames hyphenated while using
+  underscore-style Codex agent `name` values.
+- Pin MCP compatibility smoke-test npm packages to exact versions.
+- Pin GitHub and self-hosted workflow actions to commit SHAs.
+- Update setup, architecture, cold-start, troubleshooting, and MCP docs
+  for agent sync and the hardened metadata generation path.
+
+### Security
+
+- Reject symlinked generated Codex agent TOML targets.
+- Reject symlinked generated Codex skill `SKILL.md` targets for skill and
+  slash-command sync.
+- Redact sensitive-looking unknown Claude agent frontmatter values in
+  generated Codex agent TOML.
+- Use relative source paths for generated project agent TOML.
+- Redact URL path segments following sensitive names such as `token`,
+  `key`, `secret`, and `signature`.
+- Use `mktemp` for temporary uninstall MCP inspection files.
+
 ## v0.1.1 - 2026-05-16
 
 ### Security

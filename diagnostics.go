@@ -36,6 +36,8 @@ func runStatus(args []string, logger *slog.Logger) error {
 	fmt.Printf("codex: %s\n", codexStatus(report))
 	fmt.Printf("claude-bridge: %s\n", bridgeStatus(report))
 	fmt.Printf("Claude MCP servers: %d found\n", len(report.Servers))
+	fmt.Printf("Claude agents: %d user, %d project\n", report.UserClaudeAgents, report.ProjectClaudeAgents)
+	fmt.Printf("Generated Codex agents: %d user, %d project\n", report.UserGeneratedAgents, report.ProjectGeneratedAgents)
 	fmt.Printf("Project root: %s\n", report.ProjectRoot)
 	return nil
 }
@@ -64,17 +66,21 @@ func runSmokeTest(args []string, logger *slog.Logger) error {
 }
 
 type diagnosticReport struct {
-	CLIPath           string
-	CWCPath           string
-	CodexPath         string
-	CodexLoggedIn     bool
-	CodexLoginUnknown bool
-	BridgeConfigured  bool
-	BridgeLooksOurs   bool
-	ProjectRoot       string
-	Servers           []ScopedServer
-	ConnectedChildren int
-	Failures          []diagnosticFailure
+	CLIPath                string
+	CWCPath                string
+	CodexPath              string
+	CodexLoggedIn          bool
+	CodexLoginUnknown      bool
+	BridgeConfigured       bool
+	BridgeLooksOurs        bool
+	ProjectRoot            string
+	Servers                []ScopedServer
+	ConnectedChildren      int
+	Failures               []diagnosticFailure
+	UserClaudeAgents       int
+	ProjectClaudeAgents    int
+	UserGeneratedAgents    int
+	ProjectGeneratedAgents int
 }
 
 type diagnosticFailure struct {
@@ -97,6 +103,10 @@ func collectDiagnosticReport(logger *slog.Logger, connect bool) (diagnosticRepor
 	}
 	report.CodexLoggedIn, report.CodexLoginUnknown = codexLoggedIn()
 	report.BridgeConfigured, report.BridgeLooksOurs = codexBridgeConfigured()
+	report.UserClaudeAgents = countMarkdownFiles(filepath.Join(home, ".claude", "agents"))
+	report.ProjectClaudeAgents = countMarkdownFiles(filepath.Join(report.ProjectRoot, ".claude", "agents"))
+	report.UserGeneratedAgents = countGeneratedAgentFiles(filepath.Join(home, ".codex", "agents"))
+	report.ProjectGeneratedAgents = countGeneratedAgentFiles(filepath.Join(report.ProjectRoot, ".codex", "agents"))
 	servers, err := loadClaudeServers(home, report.ProjectRoot)
 	if err != nil {
 		return diagnosticReport{}, err
@@ -128,6 +138,8 @@ func printDiagnosticReport(title string, report diagnosticReport) {
 	printCheck("claude-bridge MCP entry", report.BridgeConfigured && report.BridgeLooksOurs, bridgeStatus(report))
 	fmt.Printf("- Project root: %s\n", report.ProjectRoot)
 	fmt.Printf("- Claude MCP servers found: %d\n", len(report.Servers))
+	fmt.Printf("- Claude agents found: %d user, %d project\n", report.UserClaudeAgents, report.ProjectClaudeAgents)
+	fmt.Printf("- Generated Codex agents found: %d user, %d project\n", report.UserGeneratedAgents, report.ProjectGeneratedAgents)
 	if report.ConnectedChildren > 0 || len(report.Failures) > 0 {
 		fmt.Printf("- Claude MCP servers connected: %d/%d\n", report.ConnectedChildren, len(report.Servers))
 	}

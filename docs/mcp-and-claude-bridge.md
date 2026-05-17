@@ -15,7 +15,7 @@ The daily command is:
 cwc
 ```
 
-`cwc` starts Codex after syncing Claude skills and commands into Codex-compatible skill wrappers. It also sets the project root so project `.mcp.json` files are found.
+`cwc` starts Codex after syncing Claude skills, agents, and commands into Codex-compatible artifacts. It also sets the project root so project `.mcp.json` and `.claude/agents` files are found.
 
 Project `.mcp.json` files are trusted code. A project-scoped stdio MCP
 server can run local commands, so use `cwc` only in projects whose MCP
