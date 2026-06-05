@@ -116,6 +116,18 @@ cwc
 
 `cwc` sets `CLAUDE_BRIDGE_PROJECT_ROOT`. Without that environment variable, Codex may start `claude-bridge` from a different working directory and `claude-to-codex` may not find the intended `.mcp.json`.
 
+Codex also needs to forward that variable into the `claude-bridge` MCP
+process. Launching through `cwc` does this with a per-session
+`mcp_servers.claude-bridge.env_vars` override. If `/mcp` shows only
+user-scoped tools, restart the session from the project with `cwc` and
+check:
+
+```bash
+cwc mcp get claude-bridge
+```
+
+The output should show `CLAUDE_BRIDGE_PROJECT_ROOT` under `env`.
+
 `codex-with-claude` is installed too; it is the same launcher with a more explicit name.
 
 ## `inspect --tools` Reports Child Failures
@@ -129,6 +141,7 @@ Common causes:
 - A project-scoped server expects to run from the project root, but Codex was launched directly instead of with `cwc`.
 - An HTTP MCP URL is unreachable.
 - HTTP MCP headers or auth values in the Claude config are stale.
+- An MCP header references an environment variable that is not set.
 
 `claude-bridge` uses a restricted environment for stdio MCP servers by
 default. If a server needs a token or other credential, put that value
@@ -139,15 +152,53 @@ all-server compatibility escape hatch.
 
 If at least one child connects, `claude-to-codex` keeps running and skips the unavailable child. If all children fail, `claude-bridge` startup fails.
 
-## Tools Have Unexpected Names
+Project `.mcp.json` files may use Claude-style SSE entries:
 
-When two child MCP servers expose the same tool name, `claude-to-codex` prefixes the exposed tool name with the child server name:
+```json
+{
+  "mcpServers": {
+    "remote-tools": {
+      "type": "sse",
+      "url": "https://example.com/sse",
+      "headers": {
+        "Authorization": "Bearer ${REMOTE_TOOLS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+If the token is missing, that child server fails before connecting, for
+example:
+
+```text
+headers.Authorization: missing env var REMOTE_TOOLS_TOKEN
+```
+
+Set the variable in the environment that launches `cwc` or `claude-to-codex`.
+The bridge does not print expanded header values in normal diagnostics.
+If other child servers connect, the bridge still starts and reports the
+unavailable child in logs or `inspect --tools`.
+
+When launched with `cwc`, variables referenced in Claude MCP config are
+added to Codex's per-session `claude-bridge` `env_vars` override. If a
+variable is not present in the launching environment, the child still
+fails closed with the missing variable name.
+
+## Tools Are Child-Prefixed
+
+`claude-to-codex` exposes bridged tools and prompts as native tools on
+the configured `claude-bridge` MCP server. The exposed name always starts
+with the Claude child MCP server name:
 
 ```text
 serverName__toolName
 ```
 
-The original child tool name is still used when `claude-to-codex` forwards the call.
+For example, a child server named `project_db` with a `query_read` tool is
+exposed to Codex as `project_db__query_read` under `claude-bridge`.
+The original child tool name is still used when
+`claude-to-codex` forwards the call.
 
 ## Claude Skills Did Not Appear In Codex
 

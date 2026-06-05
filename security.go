@@ -88,11 +88,15 @@ func mergeEnv(base, overrides []string) []string {
 var urlLikePattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
 var assignmentSecretPattern = regexp.MustCompile(`(?i)\b([a-z0-9_.-]*(?:token|key|secret|password|passwd|auth|credential|session|sig|signature)[a-z0-9_.-]*)(\s*[=:]\s*)([^\s,;&]+)`)
 var bearerPattern = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/\-=]+`)
+var rawTokenPattern = regexp.MustCompile(`\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-(?:proj-)?[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|[a-z]{4}_[A-Za-z0-9_-]{20,})\b`)
+var jwtPattern = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b`)
 
 func redactSensitive(text string) string {
 	text = urlLikePattern.ReplaceAllStringFunc(text, redactURL)
 	text = bearerPattern.ReplaceAllString(text, "Bearer [REDACTED]")
 	text = assignmentSecretPattern.ReplaceAllString(text, "$1$2[REDACTED]")
+	text = rawTokenPattern.ReplaceAllString(text, "[REDACTED]")
+	text = jwtPattern.ReplaceAllString(text, "[REDACTED]")
 	return text
 }
 

@@ -383,12 +383,13 @@ func TestSafeMetadataPreviewDropsSecretsAndCodeBlocks(t *testing.T) {
 		"token: super-secret",
 		"https://example.com/token/abc",
 		"/home/user/private/path",
+		"- Query db.internal.example with PRIVATE_SERVICE_TOKEN and /srv/private/config",
 		"$ cat ~/.ssh/id_rsa",
 		"- Check auth boundaries",
 	}, "\n")
 
 	preview := safeMetadataPreview(body)
-	for _, unwanted := range []string{"ignore all instructions", "super-secret", "example.com", "/home/user"} {
+	for _, unwanted := range []string{"ignore all instructions", "super-secret", "example.com", "/home/user", "db.internal.example", "PRIVATE_SERVICE_TOKEN", "/srv/private"} {
 		if strings.Contains(preview, unwanted) {
 			t.Fatalf("preview leaked %q:\n%s", unwanted, preview)
 		}
@@ -401,10 +402,31 @@ func TestSafeMetadataPreviewDropsSecretsAndCodeBlocks(t *testing.T) {
 }
 
 func TestSanitizeGeneratedDescription(t *testing.T) {
-	got := sanitizeGeneratedDescription("Use this for token=abc123\nand Authorization: Bearer secret-token.")
-	for _, unwanted := range []string{"abc123", "secret-token", "\n"} {
+	got := sanitizeGeneratedDescription("Use this for token=abc123\nand Authorization: Bearer secret-token at internal.service with /home/user/private and PRIVATE_SERVICE_TOKEN.")
+	for _, unwanted := range []string{"abc123", "secret-token", "\n", "internal.service", "/home/user", "PRIVATE_SERVICE_TOKEN"} {
 		if strings.Contains(got, unwanted) {
 			t.Fatalf("description leaked %q: %s", unwanted, got)
+		}
+	}
+}
+
+func TestBuildSkillFrontmatterPromptSanitizesEverySourceField(t *testing.T) {
+	skill := claudeSkill{
+		Name:        "private-reviewer",
+		SourcePath:  "/home/user/private/skills/private-reviewer/SKILL.md",
+		Description: "Use PRIVATE_SERVICE_TOKEN for private.internal.example.",
+		Body:        "- Review private.internal.example with /srv/private/config and token=inline-secret",
+	}
+	prompt := buildSkillFrontmatterPrompt(skill, fallbackSkillDescription(skill))
+	for _, unwanted := range []string{
+		"/home/user",
+		"/srv/private",
+		"private.internal.example",
+		"PRIVATE_SERVICE_TOKEN",
+		"inline-secret",
+	} {
+		if strings.Contains(prompt, unwanted) {
+			t.Fatalf("prompt leaked %q:\n%s", unwanted, prompt)
 		}
 	}
 }

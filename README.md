@@ -131,6 +131,13 @@ args = ["serve"]
 
 If `claude-bridge` already exists and points at `claude-to-codex serve`, leave it alone. If it points somewhere else, stop and confirm it is safe to replace because it may be user-owned.
 
+Use `cwc` for normal project launches. It computes the environment
+variable names referenced by Claude MCP config and starts Codex with a
+session-scoped `mcp_servers.claude-bridge.env_vars` override so
+project-scoped `.mcp.json` entries and HTTP/SSE headers can reach the
+`claude-bridge` process. It forwards variable names only; values stay in
+the launching environment.
+
 ## Verify
 
 Preferred checks:
@@ -146,6 +153,7 @@ Lower-level checks:
 ```bash
 claude-to-codex inspect
 claude-to-codex inspect --tools
+claude-to-codex bridge-env-vars --project "$PWD"
 claude-to-codex sync-skills
 claude-to-codex sync-agents
 claude-to-codex sync-commands
@@ -157,7 +165,11 @@ Then launch Codex from a project:
 cwc
 ```
 
-Use `cwc` instead of `codex` when you want project-scoped Claude MCP servers to load correctly. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT` before Codex starts `claude-bridge`.
+Use `cwc` instead of `codex` when you want project-scoped Claude MCP
+servers to load correctly. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT`
+and passes Codex a per-session `claude-bridge` `env_vars` override for
+that project root plus any `${VAR}` / `$VAR` references in Claude MCP
+config.
 
 `cwc` reserves only its top-level maintenance options: `--doctor`,
 `--status`, `--smoke-test`, `--install`, `--uninstall`, `--version`,
@@ -244,6 +256,30 @@ When Codex connects to `claude-bridge`, `claude-to-codex`:
 4. Connects to each configured Claude MCP server as a child MCP client.
 5. Re-exposes child tools, prompts, resources, resource templates, completions, subscriptions, and reads through one Codex MCP server.
 
+Claude-style HTTP MCP entries are supported for streamable HTTP and
+legacy SSE transports. For SSE, use `type: "sse"` with `url` and optional
+`headers`:
+
+```json
+{
+  "mcpServers": {
+    "remote-tools": {
+      "type": "sse",
+      "url": "https://example.com/sse",
+      "headers": {
+        "Authorization": "Bearer ${REMOTE_TOOLS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+String values in MCP server config support `${VAR}` and `$VAR` environment
+expansion. Missing variables fail that child server closed before the
+bridge connects to it; unrelated child servers can still start.
+When launched with `cwc`, those variable names are forwarded to the
+Codex-managed `claude-bridge` MCP process for that session.
+
 The `cwc` launcher also syncs Claude user and project artifacts before launching Codex:
 
 - `~/.claude/skills/<name>/SKILL.md` is mirrored into a generated Codex-compatible wrapper at `~/.codex/skills/<name>/SKILL.md`.
@@ -290,17 +326,20 @@ The uninstaller removes installed `claude-to-codex`/`cwc` commands, generated Co
 
 ## Tool Names
 
-If a tool or prompt name is unique across all child servers, Codex sees the original name.
-
-If multiple child servers expose the same name, `claude-to-codex` prefixes the exposed name with the child server name:
+Codex sees child tools and prompts as native tools on the configured
+`claude-bridge` MCP server. To preserve the original Claude MCP server
+identity, `claude-to-codex` always prefixes bridged tool and prompt names
+with the child server name:
 
 ```text
-wiki_get_article
+wiki__wiki_get_article
 project_mcp__status
-filesystem__status
+filesystem__list
 ```
 
 Calls are routed back to the original child server and original tool name.
+In Codex's function-tool UI, the full native tool name includes the
+Codex MCP server plus this exposed child-prefixed name.
 
 ## Links
 

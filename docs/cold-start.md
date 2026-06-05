@@ -154,6 +154,11 @@ args = ["serve"]
 
 Restart Codex after changing MCP config.
 
+Use `cwc` for normal project launches. It computes the `env_vars` Codex
+must forward to the `claude-bridge` MCP process for the current project,
+including `CLAUDE_BRIDGE_PROJECT_ROOT` and any `${VAR}` / `$VAR`
+references in Claude MCP config.
+
 ## Sync Claude Skills, Agents, And Commands
 
 Run:
@@ -179,6 +184,7 @@ From a normal shell:
 ```bash
 claude-to-codex inspect
 claude-to-codex inspect --tools
+claude-to-codex bridge-env-vars --project "$PWD"
 ```
 
 `inspect` should show:
@@ -198,7 +204,11 @@ test -f .mcp.json && echo "project MCP config exists"
 cwc
 ```
 
-Use `cwc` instead of `codex` for normal project launches. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT`, syncs Claude skills, agents, and slash commands, then starts Codex. `codex-with-claude` remains available as the explicit long-form alias.
+Use `cwc` instead of `codex` for normal project launches. The launcher
+sets `CLAUDE_BRIDGE_PROJECT_ROOT`, computes the Codex `env_vars` needed
+by `claude-bridge`, syncs Claude skills, agents, and slash commands, then
+starts Codex. `codex-with-claude` remains available as the explicit
+long-form alias.
 
 Inside Codex, ask it to list or inspect available MCP tools. You should see tools exposed by the `claude-bridge` MCP server.
 

@@ -72,6 +72,29 @@ func TestRedactSensitive(t *testing.T) {
 	}
 }
 
+func TestRedactSensitiveRedactsRawTokenLikeValues(t *testing.T) {
+	input := "failed Authorization: plain-secret github_pat_1234567890abcdefghijklmnopqrstuvwxyz eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature sk-proj-abcdefghijklmnopqrstuvwxyz123456 tkns_1234567890abcdefghijklmnopqrstuvwxyz"
+	got := redactSensitive(input)
+	for _, secret := range []string{
+		"plain-secret",
+		"github_pat_1234567890abcdefghijklmnopqrstuvwxyz",
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature",
+		"sk-proj-abcdefghijklmnopqrstuvwxyz123456",
+		"tkns_1234567890abcdefghijklmnopqrstuvwxyz",
+	} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("secret %q still present in %q", secret, got)
+		}
+	}
+}
+
+func TestRedactSensitiveKeepsMissingHeaderEnvDiagnosticReadable(t *testing.T) {
+	input := `expand config: header "Authorization" missing env var REMOTE_TOOLS_TOKEN`
+	if got := redactSensitive(input); got != input {
+		t.Fatalf("diagnostic was over-redacted: %q", got)
+	}
+}
+
 func containsEnv(env []string, want string) bool {
 	for _, entry := range env {
 		if entry == want {

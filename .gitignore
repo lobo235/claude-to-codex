@@ -3,3 +3,4 @@
 coverage.out
 .agents/
 .codex/
+scripts/check-public-boundary

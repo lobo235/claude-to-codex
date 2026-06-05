@@ -63,6 +63,7 @@ Please do this carefully. This setup must be idempotent: it should be safe to re
 
    claude-to-codex inspect
    claude-to-codex inspect --tools
+   claude-to-codex bridge-env-vars --project "$PWD"
    claude-to-codex sync-skills
    claude-to-codex sync-agents
    claude-to-codex sync-commands
@@ -75,6 +76,7 @@ Please do this carefully. This setup must be idempotent: it should be safe to re
    - Claude skills from `~/.claude/skills/<name>/SKILL.md` should appear as generated wrappers at `~/.codex/skills/<name>/SKILL.md`.
    - Claude agents from `~/.claude/agents/*.md` should appear as generated TOML at `~/.codex/agents/*.toml`.
    - Project Claude agents from `.claude/agents/*.md` should appear as generated TOML at `.codex/agents/*.toml` when using `cwc` from that project.
+   - `bridge-env-vars --project "$PWD"` should print a JSON/TOML string array containing `CLAUDE_BRIDGE_PROJECT_ROOT` plus any environment variable names referenced by Claude MCP config. It must not print secret values.
    - Generated wrappers must start with valid Codex YAML frontmatter delimited by `---`, including at least `name` and `description`.
    - Generated agents must be valid Codex TOML with `name`, `description`, and `developer_instructions`.
    - `sync-skills` should use Codex headless mode (`codex exec`) with a fast model to generate useful descriptions from Claude metadata and a bounded, sanitized preview. If I need a different fast model, set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL`.

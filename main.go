@@ -18,7 +18,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|sync-commands|sync-skills|sync-agents|version", os.Args[0])
+		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|bridge-env-vars|sync-commands|sync-skills|sync-agents|version", os.Args[0])
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	switch os.Args[1] {
@@ -40,6 +40,10 @@ func main() {
 		}
 	case "smoke-test":
 		if err := runSmokeTest(os.Args[2:], logger); err != nil {
+			fatalf("%v", err)
+		}
+	case "bridge-env-vars":
+		if err := runBridgeEnvVars(os.Args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "sync-commands":
@@ -132,7 +136,9 @@ func runInspect(args []string, logger *slog.Logger) error {
 	}{ProjectRoot: projectRoot}
 	for _, server := range servers {
 		kind := "stdio"
-		if server.Config.URL != "" || strings.EqualFold(server.Config.Type, "http") || strings.EqualFold(server.Config.Type, "streamable-http") {
+		if strings.EqualFold(server.Config.Type, "sse") {
+			kind = "sse"
+		} else if server.Config.URL != "" || strings.EqualFold(server.Config.Type, "http") || strings.EqualFold(server.Config.Type, "streamable-http") {
 			kind = "http"
 		}
 		out.Servers = append(out.Servers, serverOut{Name: server.Name, Scope: server.Scope, Kind: kind, Command: redactSensitive(server.Config.Command), URL: redactURL(server.Config.URL), WorkDir: server.WorkDir})

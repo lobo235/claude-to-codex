@@ -15,7 +15,7 @@ The daily command is:
 cwc
 ```
 
-`cwc` starts Codex after syncing Claude skills, agents, and commands into Codex-compatible artifacts. It also sets the project root so project `.mcp.json` and `.claude/agents` files are found.
+`cwc` starts Codex after syncing Claude skills, agents, and commands into Codex-compatible artifacts. It also sets the project root so project `.mcp.json` and `.claude/agents` files are found. For the Codex-managed `claude-bridge` MCP process, `cwc` passes a per-session `env_vars` override containing `CLAUDE_BRIDGE_PROJECT_ROOT` plus any `${VAR}` or `$VAR` references found in Claude MCP config.
 
 Project `.mcp.json` files are trusted code. A project-scoped stdio MCP
 server can run local commands, so use `cwc` only in projects whose MCP
@@ -38,3 +38,8 @@ args = ["serve"]
 ```
 
 That tells Codex: "when I need the `claude-bridge` MCP server, run `claude-to-codex serve`."
+
+Codex sees the bridged tools as native tools on the `claude-bridge` MCP
+server. The exposed tool names include the Claude child MCP server name,
+for example `project_db__query_read`, so the model can tell which child
+server will receive the call.

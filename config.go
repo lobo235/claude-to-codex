@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type ClaudeConfig struct {
@@ -73,6 +74,98 @@ func readMCPServers(path string) (map[string]MCPServerConfig, error) {
 		cfg.MCPServers = map[string]MCPServerConfig{}
 	}
 	return cfg.MCPServers, nil
+}
+
+func expandMCPServerConfig(cfg MCPServerConfig) (MCPServerConfig, error) {
+	var err error
+	if cfg.Type, err = expandEnvString(cfg.Type); err != nil {
+		return MCPServerConfig{}, fmt.Errorf("type: %w", err)
+	}
+	if cfg.URL, err = expandEnvString(cfg.URL); err != nil {
+		return MCPServerConfig{}, fmt.Errorf("url: %w", err)
+	}
+	if cfg.Command, err = expandEnvString(cfg.Command); err != nil {
+		return MCPServerConfig{}, fmt.Errorf("command: %w", err)
+	}
+	for i, arg := range cfg.Args {
+		cfg.Args[i], err = expandEnvString(arg)
+		if err != nil {
+			return MCPServerConfig{}, fmt.Errorf("args[%d]: %w", i, err)
+		}
+	}
+	if cfg.Env != nil {
+		env := make(map[string]string, len(cfg.Env))
+		for _, key := range sortedKeys(cfg.Env) {
+			value, err := expandEnvString(cfg.Env[key])
+			if err != nil {
+				return MCPServerConfig{}, fmt.Errorf("env.%s: %w", key, err)
+			}
+			env[key] = value
+		}
+		cfg.Env = env
+	}
+	if cfg.Headers != nil {
+		headers := make(map[string]string, len(cfg.Headers))
+		for _, key := range sortedKeys(cfg.Headers) {
+			value, err := expandEnvString(cfg.Headers[key])
+			if err != nil {
+				return MCPServerConfig{}, fmt.Errorf("header %q %w", key, err)
+			}
+			headers[key] = value
+		}
+		cfg.Headers = headers
+	}
+	return cfg, nil
+}
+
+func expandEnvString(raw string) (string, error) {
+	var b strings.Builder
+	for i := 0; i < len(raw); {
+		if raw[i] != '$' {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		if i+1 >= len(raw) {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		if raw[i+1] == '{' {
+			end := strings.IndexByte(raw[i+2:], '}')
+			if end < 0 {
+				return "", fmt.Errorf("malformed env reference")
+			}
+			name := raw[i+2 : i+2+end]
+			if name == "" {
+				return "", fmt.Errorf("empty env reference")
+			}
+			value, ok := os.LookupEnv(name)
+			if !ok {
+				return "", fmt.Errorf("missing env var %s", name)
+			}
+			b.WriteString(value)
+			i += end + 3
+			continue
+		}
+		if !isEnvNameStart(rune(raw[i+1])) {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		j := i + 2
+		for j < len(raw) && isEnvNamePart(rune(raw[j])) {
+			j++
+		}
+		name := raw[i+1 : j]
+		value, ok := os.LookupEnv(name)
+		if !ok {
+			return "", fmt.Errorf("missing env var %s", name)
+		}
+		b.WriteString(value)
+		i = j
+	}
+	return b.String(), nil
 }
 
 func sortedKeys[V any](m map[string]V) []string {

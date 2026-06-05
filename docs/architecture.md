@@ -6,6 +6,11 @@
 2. Proxy MCP capabilities from child servers to Codex.
 3. Mirror Claude user and project artifacts into Codex entries.
 
+It implements public Claude MCP compatibility, not local customization.
+Project-specific domains, token names, credential files, and operator
+wrappers stay outside this repository. See
+[ADR 0001](adr/0001-public-claude-mcp-compatibility.md).
+
 ## Naming
 
 - `cwc`: the daily launcher users type instead of `codex`
@@ -18,6 +23,7 @@
 ```text
 claude-to-codex serve
 claude-to-codex inspect [--tools]
+claude-to-codex bridge-env-vars [--project <dir>]
 claude-to-codex sync-skills
 claude-to-codex sync-agents [--project <dir>|--project-only <dir>]
 claude-to-codex sync-commands
@@ -27,6 +33,11 @@ claude-to-codex version
 `serve` is the command Codex runs for the `claude-bridge` MCP server.
 
 `inspect` is for diagnostics and setup validation.
+
+`bridge-env-vars` prints the Codex `env_vars` array that `cwc` passes
+as a per-session config override. It includes
+`CLAUDE_BRIDGE_PROJECT_ROOT` plus variable names referenced by Claude MCP
+config strings.
 
 `sync-skills`, `sync-agents`, and `sync-commands` are safe to run repeatedly.
 
@@ -38,6 +49,19 @@ claude-to-codex version
 - project-scoped MCP servers from `<project>/.mcp.json`
 
 Project root detection prefers `CLAUDE_BRIDGE_PROJECT_ROOT`. If it is unset, `claude-to-codex` walks upward from the current working directory looking for `.mcp.json`, `CLAUDE.md`, or `.git`.
+
+Codex stdio MCP servers do not automatically inherit the launcher's full
+environment. `cwc` therefore starts Codex with
+`-c mcp_servers.claude-bridge.env_vars=...` so the Codex-managed
+`claude-bridge` process receives the project root and any environment
+variables referenced by the active Claude MCP configuration.
+
+String values in MCP server config are expanded with `${VAR}` and `$VAR`
+environment references when that child server connects. Missing variables
+fail that child server closed with a diagnostic that names the missing
+variable but not any configured secret values. Config loading itself keeps
+raw Claude-shaped entries intact so one missing child credential does not
+prevent unrelated child servers from starting.
 
 Project-scoped stdio MCP servers run with their working directory set to the detected project root.
 
@@ -63,6 +87,16 @@ HTTP MCP headers and stdio env values are not printed.
 
 Each Claude MCP server becomes a child MCP client session. `claude-to-codex` registers one Codex-facing MCP server and forwards requests to the correct child.
 
+Supported child transports:
+
+- stdio via `command` and optional `args`
+- streamable HTTP via `url`, `type: "http"`, or `type: "streamable-http"`
+- legacy MCP SSE via `type: "sse"` and `url`
+
+HTTP and SSE entries may define `headers`. Header values are expanded from
+the environment, attached to outbound requests, and omitted from normal
+diagnostics.
+
 Forwarded capability types:
 
 - tools
@@ -72,7 +106,8 @@ Forwarded capability types:
 - completions
 - resource subscriptions
 
-Tool and prompt name collisions are resolved by prefixing the exposed name with the child server name:
+Tool and prompt names are always exposed with the child server name as a
+prefix so Codex-visible tools preserve their Claude MCP origin:
 
 ```text
 childName__originalName

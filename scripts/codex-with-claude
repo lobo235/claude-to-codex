@@ -138,4 +138,13 @@ if ! command -v codex >/dev/null 2>&1; then
   exit 127
 fi
 
-exec codex "$@"
+codex_config_args=()
+if command -v claude-to-codex >/dev/null 2>&1; then
+  if bridge_env_vars="$(claude-to-codex bridge-env-vars --project "$CLAUDE_BRIDGE_PROJECT_ROOT")"; then
+    codex_config_args=(-c "mcp_servers.claude-bridge.env_vars=$bridge_env_vars")
+  else
+    printf '%s: warning: failed to compute claude-bridge env_vars; project-scoped MCP servers may not load\n' "$launcher_name" >&2
+  fi
+fi
+
+exec codex "${codex_config_args[@]}" "$@"

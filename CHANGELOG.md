@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-06-05
+
+### Added
+
+- Add Claude-style SSE MCP transport support with optional HTTP headers.
+- Add `${VAR}` and `$VAR` expansion for Claude MCP server config strings,
+  including HTTP/SSE headers, while failing only the affected child server
+  when a required variable is missing.
+- Add `bridge-env-vars` to compute the Codex `env_vars` list needed by
+  `claude-bridge` for the active Claude MCP configuration.
+- Add ADR 0001 documenting the public Claude MCP compatibility boundary.
+
+### Changed
+
+- Have `cwc` pass a session-scoped
+  `mcp_servers.claude-bridge.env_vars` override to Codex so
+  project-scoped MCP config and header variables reach the
+  Codex-managed `claude-bridge` process.
+- Always expose bridged tools and prompts with the child server name
+  prefix so Codex-visible tool names preserve their Claude MCP origin.
+- Update setup, architecture, cold-start, troubleshooting, and MCP docs
+  for SSE, env forwarding, child-prefixed tool names, and the public
+  compatibility boundary.
+
+### Security
+
+- Redact raw token-like and JWT-like values in diagnostics.
+- Sanitize all Claude skill and agent metadata before sending bounded
+  description-generation prompts to `codex exec`, including private-looking
+  domains, absolute paths, and credential-like environment variable names.
+- Sanitize generated and source agent descriptions before writing generated
+  Codex agent TOML.
+- Require Go 1.26.4 so release builds use a toolchain with the current
+  standard-library vulnerability fixes.
+- Keep local private-boundary scanner scripts ignored so operator-specific
+  checks do not leak into public release artifacts.
+
 ## [v0.2.0] - 2026-05-16
 
 ### Added

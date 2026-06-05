@@ -133,12 +133,20 @@ func connectChild(ctx context.Context, server ScopedServer) (*childConnection, e
 
 func connectChildSession(ctx context.Context, server ScopedServer) (*mcpsdk.ClientSession, error) {
 	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "claude-to-codex", Version: version}, nil)
-	cfg := server.Config
-	if cfg.URL != "" || strings.EqualFold(cfg.Type, "http") || strings.EqualFold(cfg.Type, "streamable-http") {
-		httpClient := http.DefaultClient
-		if len(cfg.Headers) > 0 {
-			httpClient = &http.Client{Transport: headerTransport{headers: cfg.Headers, base: http.DefaultTransport}}
+	cfg, err := expandMCPServerConfig(server.Config)
+	if err != nil {
+		return nil, fmt.Errorf("expand config: %w", err)
+	}
+	server.Config = cfg
+	if strings.EqualFold(cfg.Type, "sse") {
+		if cfg.URL == "" {
+			return nil, fmt.Errorf("missing url")
 		}
+		httpClient := httpClientWithHeaders(cfg.Headers)
+		return client.Connect(ctx, &mcpsdk.SSEClientTransport{Endpoint: cfg.URL, HTTPClient: httpClient}, nil)
+	}
+	if cfg.URL != "" || strings.EqualFold(cfg.Type, "http") || strings.EqualFold(cfg.Type, "streamable-http") {
+		httpClient := httpClientWithHeaders(cfg.Headers)
 		return client.Connect(ctx, &mcpsdk.StreamableClientTransport{Endpoint: cfg.URL, HTTPClient: httpClient, DisableStandaloneSSE: true}, nil)
 	}
 	if cfg.Command == "" {
@@ -150,6 +158,13 @@ func connectChildSession(ctx context.Context, server ScopedServer) (*mcpsdk.Clie
 		cmd.Dir = server.WorkDir
 	}
 	return client.Connect(ctx, &mcpsdk.CommandTransport{Command: cmd, TerminateDuration: 2 * time.Second}, nil)
+}
+
+func httpClientWithHeaders(headers map[string]string) *http.Client {
+	if len(headers) == 0 {
+		return http.DefaultClient
+	}
+	return &http.Client{Transport: headerTransport{headers: headers, base: http.DefaultTransport}}
 }
 
 func connectFailuresError(failures []childFailure) error {

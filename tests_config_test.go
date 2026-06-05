@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -77,13 +78,13 @@ func TestLoadClaudeServersOnlyLoadsRequestedProjectRoot(t *testing.T) {
 	}
 }
 
-func TestNameMapperPreservesUniqueAndPrefixesCollisions(t *testing.T) {
+func TestNameMapperPrefixesEveryChildName(t *testing.T) {
 	mapper := newNameMapper([]string{"wiki_get", "status", "status"})
-	if got := mapper.exposed("wiki", "wiki_get"); got != "wiki_get" {
-		t.Fatalf("unique name = %q", got)
+	if got := mapper.exposed("wiki", "wiki_get"); got != "wiki__wiki_get" {
+		t.Fatalf("prefixed unique name = %q", got)
 	}
 	if got := mapper.exposed("project-tools", "status"); got != "project-tools__status" {
-		t.Fatalf("collision name = %q", got)
+		t.Fatalf("prefixed repeated name = %q", got)
 	}
 }
 
@@ -99,6 +100,88 @@ func TestReadMCPServersParsesBridgeInheritEnvExtension(t *testing.T) {
 	}
 	if !servers["legacy"].InheritEnv {
 		t.Fatalf("inherit env extension was not parsed: %#v", servers["legacy"])
+	}
+}
+
+func TestReadMCPServersParsesSSEServerWithHeaders(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, ".mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers":{"remote-tools":{"type":"sse","url":"https://example.invalid/sse","headers":{"Authorization":"Bearer ${REMOTE_TOOLS_TOKEN}"}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := readMCPServers(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := servers["remote-tools"]
+	if server.Type != "sse" || server.URL != "https://example.invalid/sse" {
+		t.Fatalf("sse server = %#v", server)
+	}
+	if got := server.Headers["Authorization"]; got != "Bearer ${REMOTE_TOOLS_TOKEN}" {
+		t.Fatalf("authorization header = %q", got)
+	}
+}
+
+func TestExpandMCPServerConfigExpandsEnvReferences(t *testing.T) {
+	t.Setenv("MCP_HOST", "example.invalid")
+	t.Setenv("REMOTE_TOOLS_TOKEN", "secret-token")
+
+	cfg, err := expandMCPServerConfig(MCPServerConfig{
+		Type: "sse",
+		URL:  "https://${MCP_HOST}/sse",
+		Headers: map[string]string{
+			"Authorization": "Bearer $REMOTE_TOOLS_TOKEN",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.URL; got != "https://example.invalid/sse" {
+		t.Fatalf("expanded URL = %q", got)
+	}
+	if got := cfg.Headers["Authorization"]; got != "Bearer secret-token" {
+		t.Fatalf("expanded Authorization = %q", got)
+	}
+}
+
+func TestExpandMCPServerConfigFailsClosedOnMissingEnvReference(t *testing.T) {
+	_, err := expandMCPServerConfig(MCPServerConfig{
+		Type: "sse",
+		URL:  "https://example.invalid/sse",
+		Headers: map[string]string{
+			"Authorization": "Bearer ${MISSING_REMOTE_TOOLS_TOKEN}",
+		},
+	})
+	if err == nil {
+		t.Fatal("expandMCPServerConfig succeeded with a missing env reference")
+	}
+	if !strings.Contains(err.Error(), "MISSING_REMOTE_TOOLS_TOKEN") {
+		t.Fatalf("error = %q, want missing env var name", err)
+	}
+}
+
+func TestLoadClaudeServersDoesNotExpandOrFailOnMissingEnvReference(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".mcp.json"), []byte(`{"mcpServers":{"remote-tools":{"type":"sse","url":"https://example.invalid/sse","headers":{"Authorization":"Bearer ${MISSING_REMOTE_TOOLS_TOKEN}"}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := loadClaudeServers(home, project)
+	if err != nil {
+		t.Fatalf("loadClaudeServers should preserve raw config and defer expansion to child connect: %v", err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("got %d servers, want 1", len(servers))
+	}
+	if got := servers[0].Config.Headers["Authorization"]; got != "Bearer ${MISSING_REMOTE_TOOLS_TOKEN}" {
+		t.Fatalf("raw Authorization header = %q", got)
 	}
 }
 

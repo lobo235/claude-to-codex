@@ -57,24 +57,24 @@ func TestProxyListsAndCallsUserProjectAndCollisionTools(t *testing.T) {
 		"project__env_AMBIENT_SECRET_TOKEN",
 		"project__env_CLAUDE_BRIDGE_PROJECT_ROOT",
 		"project__env_EXPLICIT_TOKEN",
+		"project__project_only",
 		"project__shared",
-		"project_only",
 		"user__env_AMBIENT_SECRET_TOKEN",
 		"user__env_CLAUDE_BRIDGE_PROJECT_ROOT",
 		"user__env_EXPLICIT_TOKEN",
 		"user__shared",
-		"user_only",
+		"user__user_only",
 	}
 	if got := stringsJoin(names); got != stringsJoin(wantNames) {
 		t.Fatalf("tool names = %v, want %v", names, wantNames)
 	}
 
-	userOnly := callFakeTool(t, ctx, session, "user_only")
+	userOnly := callFakeTool(t, ctx, session, "user__user_only")
 	if userOnly.Server != "user" || userOnly.Tool != "user_only" {
 		t.Fatalf("user_only result = %#v", userOnly)
 	}
 
-	projectOnly := callFakeTool(t, ctx, session, "project_only")
+	projectOnly := callFakeTool(t, ctx, session, "project__project_only")
 	if projectOnly.Server != "project" || projectOnly.Tool != "project_only" {
 		t.Fatalf("project_only result = %#v", projectOnly)
 	}
@@ -110,7 +110,7 @@ func TestProxyContinuesWhenOneChildCannotConnect(t *testing.T) {
 
 	session, closeSession := connectTestClient(t, ctx, proxy)
 	defer closeSession()
-	got := callFakeTool(t, ctx, session, "user_only")
+	got := callFakeTool(t, ctx, session, "user__user_only")
 	if got.Server != "user" {
 		t.Fatalf("user_only server = %q, want user", got.Server)
 	}
@@ -133,10 +133,10 @@ func TestRestrictedChildEnvExcludesAmbientSecretsAndKeepsExplicitEnv(t *testing.
 	session, closeSession := connectTestClient(t, ctx, proxy)
 	defer closeSession()
 
-	if got := callFakeTool(t, ctx, session, "env_EXPLICIT_TOKEN"); got.Env != "explicit-secret" {
+	if got := callFakeTool(t, ctx, session, "user__env_EXPLICIT_TOKEN"); got.Env != "explicit-secret" {
 		t.Fatalf("explicit env = %q, want explicit-secret", got.Env)
 	}
-	if got := callFakeTool(t, ctx, session, "env_AMBIENT_SECRET_TOKEN"); got.Env != "" {
+	if got := callFakeTool(t, ctx, session, "user__env_AMBIENT_SECRET_TOKEN"); got.Env != "" {
 		t.Fatalf("ambient secret leaked into restricted child env: %q", got.Env)
 	}
 }
@@ -157,7 +157,7 @@ func TestPerServerInheritEnvAllowsAmbientEnv(t *testing.T) {
 	session, closeSession := connectTestClient(t, ctx, proxy)
 	defer closeSession()
 
-	if got := callFakeTool(t, ctx, session, "env_AMBIENT_SECRET_TOKEN"); got.Env != "ambient-secret" {
+	if got := callFakeTool(t, ctx, session, "user__env_AMBIENT_SECRET_TOKEN"); got.Env != "ambient-secret" {
 		t.Fatalf("ambient env = %q, want ambient-secret", got.Env)
 	}
 }
@@ -179,7 +179,7 @@ func TestGlobalInheritEnvAllowsAmbientEnv(t *testing.T) {
 	session, closeSession := connectTestClient(t, ctx, proxy)
 	defer closeSession()
 
-	if got := callFakeTool(t, ctx, session, "env_AMBIENT_SECRET_TOKEN"); got.Env != "ambient-secret" {
+	if got := callFakeTool(t, ctx, session, "user__env_AMBIENT_SECRET_TOKEN"); got.Env != "ambient-secret" {
 		t.Fatalf("ambient env = %q, want ambient-secret", got.Env)
 	}
 }
@@ -191,7 +191,7 @@ func TestProjectChildReceivesProjectRootEnv(t *testing.T) {
 	session, closeProxy := startTestProxy(t, ctx, []ScopedServer{fakeServer("project", "project", projectRoot)})
 	defer closeProxy()
 
-	if got := callFakeTool(t, ctx, session, "env_CLAUDE_BRIDGE_PROJECT_ROOT"); got.Env != projectRoot {
+	if got := callFakeTool(t, ctx, session, "project__env_CLAUDE_BRIDGE_PROJECT_ROOT"); got.Env != projectRoot {
 		t.Fatalf("project root env = %q, want %q", got.Env, projectRoot)
 	}
 }
@@ -215,7 +215,7 @@ func TestProxyPerChildConnectTimeoutDoesNotStarveLaterChildren(t *testing.T) {
 
 	session, closeSession := connectTestClient(t, ctx, proxy)
 	defer closeSession()
-	got := callFakeTool(t, ctx, session, "user_only")
+	got := callFakeTool(t, ctx, session, "user__user_only")
 	if got.Server != "user" {
 		t.Fatalf("user_only server = %q, want user", got.Server)
 	}
@@ -236,7 +236,7 @@ func TestProxyChildSurvivesConnectContextCancellation(t *testing.T) {
 	defer closeSession()
 
 	cancelConnect()
-	got := callFakeTool(t, serverCtx, session, "project_only")
+	got := callFakeTool(t, serverCtx, session, "project__project_only")
 	if got.Server != "project" || got.Tool != "project_only" {
 		t.Fatalf("project_only result = %#v", got)
 	}
@@ -286,13 +286,13 @@ func TestInspectToolsReportsExposedToolsAndFailures(t *testing.T) {
 		"project__env_AMBIENT_SECRET_TOKEN",
 		"project__env_CLAUDE_BRIDGE_PROJECT_ROOT",
 		"project__env_EXPLICIT_TOKEN",
+		"project__project_only",
 		"project__shared",
-		"project_only",
 		"user__env_AMBIENT_SECRET_TOKEN",
 		"user__env_CLAUDE_BRIDGE_PROJECT_ROOT",
 		"user__env_EXPLICIT_TOKEN",
 		"user__shared",
-		"user_only",
+		"user__user_only",
 	}
 	if got := stringsJoin(names); got != stringsJoin(wantNames) {
 		t.Fatalf("inspect tools = %v, want %v", names, wantNames)

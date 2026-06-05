@@ -137,7 +137,7 @@ Classify failures before changing bridge code:
   env, HTTP URL unreachable, auth/header issue, or stdio startup wrote
   invalid data to stdout.
 - `list_tools`: child connected but capability discovery failed.
-- missing exposed name: name collision mapping, registration, or schema
+- missing exposed name: child-prefix name mapping, registration, or schema
   translation issue.
 - tool call failure after listing: routing issue, bad argument pass-through,
   child runtime behavior, or timeout handling.

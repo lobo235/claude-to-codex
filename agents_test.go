@@ -265,6 +265,60 @@ Project body.
 	}
 }
 
+func TestBuildAgentDescriptionPromptSanitizesEverySourceField(t *testing.T) {
+	agent := claudeAgent{
+		FileName:    "private-reviewer",
+		CodexName:   "private_reviewer",
+		SourcePath:  "/home/user/private/.claude/agents/private-reviewer.md",
+		Description: "Use PRIVATE_AGENT_TOKEN for private.agent.example.",
+		Tools:       "Bash(PRIVATE_AGENT_TOKEN=secret), WebFetch(private.agent.example)",
+		Body:        "- Inspect private.agent.example with /srv/private/config and token=inline-secret",
+	}
+	prompt := buildAgentDescriptionPrompt(agent, fallbackAgentDescription(agent))
+	for _, unwanted := range []string{
+		"/home/user",
+		"/srv/private",
+		"private.agent.example",
+		"PRIVATE_AGENT_TOKEN",
+		"inline-secret",
+	} {
+		if strings.Contains(prompt, unwanted) {
+			t.Fatalf("prompt leaked %q:\n%s", unwanted, prompt)
+		}
+	}
+}
+
+func TestSyncClaudeAgentsSanitizesSourceDescription(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	sourceDir := filepath.Join(home, ".claude", "agents")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "private-reviewer.md"), []byte(`---
+description: Use PRIVATE_AGENT_TOKEN for private.agent.example from /srv/private/config.
+---
+
+Review code.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := syncClaudeAgentsWithProgress(home, "", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "agents", "private-reviewer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	for _, unwanted := range []string{"PRIVATE_AGENT_TOKEN", "private.agent.example", "/srv/private"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("generated agent leaked %q:\n%s", unwanted, body)
+		}
+	}
+}
+
 func TestSyncClaudeAgentsSkipsMalformedAgent(t *testing.T) {
 	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
 	home := t.TempDir()
