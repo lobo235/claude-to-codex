@@ -57,6 +57,20 @@ go build -o bin/mcp-compat-probe ./tools/mcp-compat-probe
 bin/mcp-compat-probe --help
 ```
 
+To replay a specific exposed tool call through `claude-to-codex serve`,
+use one or more `-call` flags. The format is
+`exposed_tool_name={json arguments}`:
+
+```sh
+bin/mcp-compat-probe \
+  -call 'remote-tools__status={}' \
+  -call 'remote-tools__query_read={"statement":"SELECT 1","max_rows":5}'
+```
+
+For project-scoped MCP configs, set `CLAUDE_BRIDGE_PROJECT_ROOT` and make
+sure any env vars referenced by `.mcp.json` headers or string fields are
+already present in the shell before running the probe.
+
 Use a project-scoped fixture when validating a private MCP server:
 
 ```sh
@@ -140,7 +154,8 @@ Classify failures before changing bridge code:
 - missing exposed name: child-prefix name mapping, registration, or schema
   translation issue.
 - tool call failure after listing: routing issue, bad argument pass-through,
-  child runtime behavior, or timeout handling.
+  child runtime behavior, timeout handling, stale launch environment, or a
+  child HTTP/SSE connection that closed after registration.
 
 For any regression, reduce it to a fixture that does not require private
 user config before adding it to automated tests.

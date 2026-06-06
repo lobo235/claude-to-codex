@@ -62,3 +62,11 @@ Codex sees the bridged tools as native tools on the `claude-bridge` MCP
 server. The exposed tool names include the Claude child MCP server name,
 for example `project_db__query_read`, so the model can tell which child
 server will receive the call.
+
+Proxied child tool calls use the bridge child-operation timeout
+(`CLAUDE_BRIDGE_OPERATION_TIMEOUT`, default `30s`). If a child tool call
+fails after tools were listed, current versions return an error that names
+the child scope, child server, original tool name, exposed tool name, and
+a hint for common causes such as missing env vars, auth failures, timeouts,
+or closed HTTP/SSE connections. See [troubleshooting](troubleshooting.md)
+for recovery steps.

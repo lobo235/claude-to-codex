@@ -121,6 +121,12 @@ If at least one child server connects, unavailable children are skipped and repo
 
 If all configured child servers fail, `serve` exits with an error.
 
+Child capability calls use the same child-operation timeout budget as
+startup and listing. Tool-call failures are wrapped before being returned
+to Codex so the error identifies the child scope, child server, operation,
+original tool name, exposed tool name, and a hint for common env, auth,
+timeout, or closed-connection failures.
+
 ## Artifact Sync
 
 Claude skills are converted into generated Codex-compatible skill wrappers. The generated file supplies valid Codex frontmatter, points back to the Claude `SKILL.md`, and includes a source snapshot so Claude skills with missing or incompatible frontmatter still load in Codex.

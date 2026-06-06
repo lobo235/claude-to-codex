@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-06-06
+
+### Changed
+
+- Refresh MCP docs for targeted probe calls, child `tools/call` timeout
+  and error wrapping behavior, and fresh-session requirements after
+  environment or project-root changes.
+
 ## [v0.3.1] - 2026-06-06
 
 ### Added

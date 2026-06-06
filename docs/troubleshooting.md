@@ -233,6 +233,10 @@ A timeout normally reports `context deadline exceeded` or a timeout hint.
 An EOF/client-closing error without that timeout wording is more likely a
 closed child connection than the bridge's operation budget firing.
 
+Current versions wrap child `tools/call` failures with the child scope,
+server name, original tool name, exposed tool name, and a hint when the
+message matches a common env, auth, timeout, or closed-connection pattern.
+
 ## Tools Are Child-Prefixed
 
 `claude-to-codex` exposes bridged tools and prompts as native tools on

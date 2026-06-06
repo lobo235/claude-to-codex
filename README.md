@@ -138,6 +138,11 @@ project-scoped `.mcp.json` entries and HTTP/SSE headers can reach the
 `claude-bridge` process. It forwards variable names only; values stay in
 the launching environment.
 
+If a project `.mcp.json` references values from a private env file, source
+that file before launching `cwc`. Changing a token, env file, `.mcp.json`,
+or project root requires a fresh Codex session because an already-running
+Codex-managed `claude-bridge` keeps its original environment.
+
 ## Verify
 
 Preferred checks:
@@ -278,7 +283,9 @@ String values in MCP server config support `${VAR}` and `$VAR` environment
 expansion. Missing variables fail that child server closed before the
 bridge connects to it; unrelated child servers can still start.
 When launched with `cwc`, those variable names are forwarded to the
-Codex-managed `claude-bridge` MCP process for that session.
+Codex-managed `claude-bridge` MCP process for that session. The forwarded
+entries are variable names, not secret values; the values must already be
+present in the environment that launches `cwc`.
 
 The `cwc` launcher also syncs Claude user and project artifacts before launching Codex:
 

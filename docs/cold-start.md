@@ -159,6 +159,11 @@ must forward to the `claude-bridge` MCP process for the current project,
 including `CLAUDE_BRIDGE_PROJECT_ROOT` and any `${VAR}` / `$VAR`
 references in Claude MCP config.
 
+Those `env_vars` entries are variable names, not secret values. If a
+project `.mcp.json` references values from a private env file, source that
+file before launching `cwc`. Changing a token, env file, `.mcp.json`, or
+project root requires a fresh Codex session.
+
 ## Sync Claude Skills, Agents, And Commands
 
 Run:
