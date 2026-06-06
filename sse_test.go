@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,24 +91,203 @@ func TestProxyConnectsClaudeStyleSSEServerAndProxiesToolCall(t *testing.T) {
 	}
 }
 
+func TestServeProcessUsesCodexForwardedProjectEnvForSSEHeader(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	fixture := newClaudeStyleSSEFixture(t, "Bearer codex-forwarded-token")
+	defer fixture.Close()
+
+	tmp := t.TempDir()
+	home := tmp + "/home"
+	project := tmp + "/project"
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, project+"/.mcp.json", map[string]any{
+		"mcpServers": map[string]any{
+			"example": map[string]any{
+				"type": "sse",
+				"url":  fixture.URL + "/sse",
+				"headers": map[string]string{
+					"Authorization": "Bearer ${CODEX_STYLE_REMOTE_TOKEN}",
+				},
+			},
+		},
+	})
+
+	cmd := exec.CommandContext(ctx, os.Args[0])
+	cmd.Env = []string{
+		"CLAUDE_TO_CODEX_TEST_SERVE=1",
+		"CLAUDE_BRIDGE_PROJECT_ROOT=" + project,
+		"CODEX_STYLE_REMOTE_TOKEN=codex-forwarded-token",
+		"HOME=" + home,
+		"PATH=" + os.Getenv("PATH"),
+	}
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "codex-style-test-client", Version: "0"}, nil)
+	session, err := client.Connect(ctx, &mcpsdk.CommandTransport{Command: cmd, TerminateDuration: 2 * time.Second}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	var names []string
+	for tool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, tool.Name)
+	}
+	if !slices.Contains(names, "example__example_read") {
+		t.Fatalf("tools = %v, want example__example_read", names)
+	}
+
+	res, err := session.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "example__example_read",
+		Arguments: map[string]any{
+			"target":    "sample",
+			"statement": "SELECT 3 AS item_count",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	structured, ok := res.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content = %#v", res.StructuredContent)
+	}
+	if structured["target"] != "sample" || structured["item_count"] != float64(3) {
+		t.Fatalf("structured content = %#v", structured)
+	}
+	if got := fixture.AuthenticatedRequests(); got < 2 {
+		t.Fatalf("authenticated requests = %d, want at least GET and POST", got)
+	}
+}
+
+func TestProxyToolCallWrapsLateSSEDisconnectWithChildContext(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	fixture := newClaudeStyleSSEFixture(t, "Bearer secret-token")
+	fixture.closeOnToolCall = true
+	defer fixture.Close()
+
+	proxy := newProxyServer(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err := proxy.connectChildren(ctx, []ScopedServer{{
+		Name:  "remote",
+		Scope: "project",
+		Config: MCPServerConfig{
+			Type: "sse",
+			URL:  fixture.URL + "/sse",
+			Headers: map[string]string{
+				"Authorization": "Bearer secret-token",
+			},
+		},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.close()
+
+	session, closeSession := connectTestClient(t, ctx, proxy)
+	defer closeSession()
+
+	_, err := session.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "remote__example_read",
+		Arguments: map[string]any{
+			"target":    "sample",
+			"statement": "SELECT 3 AS item_count",
+		},
+	})
+	if err == nil {
+		t.Fatal("CallTool succeeded after child SSE stream closed")
+	}
+	text := err.Error()
+	for _, want := range []string{
+		`project-scope MCP server "remote"`,
+		`tools/call`,
+		`remote__example_read`,
+		`example_read`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("error = %q, want %q", text, want)
+		}
+	}
+}
+
+func TestProxyToolCallTimeoutReportsChildContext(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	fixture := newClaudeStyleSSEFixture(t, "Bearer secret-token")
+	fixture.toolCallDelay = 100 * time.Millisecond
+	defer fixture.Close()
+
+	proxy := newProxyServer(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err := proxy.connectChildren(ctx, []ScopedServer{{
+		Name:  "remote",
+		Scope: "project",
+		Config: MCPServerConfig{
+			Type: "sse",
+			URL:  fixture.URL + "/sse",
+			Headers: map[string]string{
+				"Authorization": "Bearer secret-token",
+			},
+		},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.close()
+
+	session, closeSession := connectTestClient(t, ctx, proxy)
+	defer closeSession()
+
+	proxy.operationTimeout = 10 * time.Millisecond
+	_, err := session.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "remote__example_read",
+		Arguments: map[string]any{
+			"target":    "sample",
+			"statement": "SELECT 3 AS item_count",
+		},
+	})
+	if err == nil {
+		t.Fatal("CallTool succeeded after child operation timeout")
+	}
+	text := err.Error()
+	for _, want := range []string{
+		`project-scope MCP server "remote"`,
+		`tools/call`,
+		`context deadline exceeded`,
+		`timed out`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("error = %q, want %q", text, want)
+		}
+	}
+}
+
 type claudeStyleSSEFixture struct {
 	*httptest.Server
 
-	t          *testing.T
-	authHeader string
-	events     chan []byte
+	t           *testing.T
+	authHeader  string
+	events      chan []byte
+	closeStream chan struct{}
 
 	mu                    sync.Mutex
 	methods               []string
 	authenticatedRequests int
+	closeOnToolCall       bool
+	toolCallDelay         time.Duration
+	closeOnce             sync.Once
 }
 
 func newClaudeStyleSSEFixture(t *testing.T, authHeader string) *claudeStyleSSEFixture {
 	t.Helper()
 	fixture := &claudeStyleSSEFixture{
-		t:          t,
-		authHeader: authHeader,
-		events:     make(chan []byte, 100),
+		t:           t,
+		authHeader:  authHeader,
+		events:      make(chan []byte, 100),
+		closeStream: make(chan struct{}),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sse", fixture.handleSSE)
@@ -150,6 +331,8 @@ func (f *claudeStyleSSEFixture) handleSSE(w http.ResponseWriter, r *http.Request
 		case data := <-f.events:
 			fmt.Fprintf(w, "event: message\r\ndata: %s\r\n\r\n", data)
 			flusher.Flush()
+		case <-f.closeStream:
+			return
 		case <-r.Context().Done():
 			return
 		}
@@ -204,6 +387,20 @@ func (f *claudeStyleSSEFixture) handleMessage(w http.ResponseWriter, r *http.Req
 			}},
 		}
 	case "tools/call":
+		if f.toolCallDelay > 0 {
+			select {
+			case <-time.After(f.toolCallDelay):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if f.closeOnToolCall {
+			f.closeOnce.Do(func() {
+				close(f.closeStream)
+			})
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
 		var params struct {
 			Name      string         `json:"name"`
 			Arguments map[string]any `json:"arguments"`

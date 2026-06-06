@@ -36,9 +36,11 @@ func main() {
 	var bridge string
 	var timeout time.Duration
 	var allowedFile string
+	var requestedCalls callFlags
 	flag.StringVar(&bridge, "bridge", "bin/claude-to-codex", "path to claude-to-codex binary")
 	flag.DurationVar(&timeout, "timeout", 180*time.Second, "overall probe timeout")
 	flag.StringVar(&allowedFile, "allowed-file", "", "file path used for filesystem read probes")
+	flag.Var(&requestedCalls, "call", "tool call as name={json arguments}; may be repeated")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -64,7 +66,11 @@ func main() {
 	}
 	sort.Strings(out.ListedTools)
 
-	for _, p := range probes(allowedFile) {
+	calls := []probe(requestedCalls)
+	if len(calls) == 0 {
+		calls = probes(allowedFile)
+	}
+	for _, p := range calls {
 		if !available[p.name] {
 			out.Skipped = append(out.Skipped, p.name)
 			continue
@@ -83,6 +89,37 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+type callFlags []probe
+
+func (c *callFlags) String() string {
+	var parts []string
+	for _, p := range *c {
+		data, err := json.Marshal(p.args)
+		if err != nil {
+			continue
+		}
+		parts = append(parts, p.name+"="+string(data))
+	}
+	return strings.Join(parts, ",")
+}
+
+func (c *callFlags) Set(value string) error {
+	name, rawArgs, ok := strings.Cut(value, "=")
+	if !ok {
+		return fmt.Errorf("call must be name={json arguments}")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("call tool name is required")
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
+		return fmt.Errorf("parse call arguments for %s: %w", name, err)
+	}
+	*c = append(*c, probe{name: name, args: args})
+	return nil
 }
 
 func probes(allowedFile string) []probe {

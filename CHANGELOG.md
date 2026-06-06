@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-06-06
+
+### Added
+
+- Add targeted `mcp-compat-probe -call` support for replaying specific
+  child MCP tool calls through `claude-to-codex serve`.
+- Add regression coverage for Codex-launched project SSE servers whose
+  headers depend on environment variables forwarded into the
+  `claude-bridge` process.
+
+### Changed
+
+- Apply the bridge child-operation timeout to proxied child `tools/call`
+  requests.
+- Wrap child `tools/call` failures with project/user scope, child server
+  name, original tool name, exposed tool name, and actionable hints for
+  missing env vars, auth failures, timeouts, and closed SSE connections.
+- Document that `cwc` forwards variable names, not secret values, and
+  that token, env file, or project root changes require a fresh Codex
+  session.
+
 ## [v0.3.0] - 2026-06-05
 
 ### Added

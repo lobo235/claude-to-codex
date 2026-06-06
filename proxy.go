@@ -278,7 +278,13 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 			route := toolRoute{child: child, name: original}
 			p.tools[exposed] = route
 			srv.AddTool(&tool, func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-				return route.child.session.CallTool(ctx, &mcpsdk.CallToolParams{Name: route.name, Arguments: req.Params.Arguments})
+				callCtx, cancel := p.operationContext(ctx)
+				defer cancel()
+				res, err := route.child.session.CallTool(callCtx, &mcpsdk.CallToolParams{Name: route.name, Arguments: req.Params.Arguments})
+				if err != nil {
+					return nil, childOperationError(route.child.ScopedServer, "tools/call", fmt.Sprintf("%q via exposed tool %q", route.name, req.Params.Name), err)
+				}
+				return res, nil
 			})
 		}
 	}
@@ -339,6 +345,34 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 	}
 
 	return nil
+}
+
+func childOperationError(server ScopedServer, operation, detail string, err error) error {
+	message := redactSensitive(err.Error())
+	hint := childOperationFailureHint(message)
+	if detail != "" {
+		operation = operation + " " + detail
+	}
+	if hint != "" {
+		return fmt.Errorf("%s-scope MCP server %q %s failed: %s (%s)", server.Scope, server.Name, operation, message, hint)
+	}
+	return fmt.Errorf("%s-scope MCP server %q %s failed: %s", server.Scope, server.Name, operation, message)
+}
+
+func childOperationFailureHint(message string) string {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "missing env var"):
+		return "set the referenced variable before launching cwc so Codex forwards it to claude-bridge"
+	case strings.Contains(lower, "context deadline exceeded") || strings.Contains(lower, "timeout") || strings.Contains(lower, "timed out"):
+		return "child MCP operation timed out; check remote server latency or raise CLAUDE_BRIDGE_OPERATION_TIMEOUT before launching cwc"
+	case strings.Contains(lower, "unauthorized") || strings.Contains(lower, "status 401") || strings.Contains(lower, "status code 401") || strings.Contains(lower, "forbidden") || strings.Contains(lower, "status 403") || strings.Contains(lower, "status code 403"):
+		return "check the child MCP server auth token or Authorization/header environment forwarded to claude-bridge"
+	case strings.Contains(lower, "eof") || strings.Contains(lower, "connection closed") || strings.Contains(lower, "client is closing"):
+		return "child MCP connection closed; for HTTP/SSE servers check server health, Authorization/header env vars forwarded to claude-bridge, and restart Codex to clear stale sessions"
+	default:
+		return ""
+	}
 }
 
 func (p *proxyServer) inspectTools(ctx context.Context) ([]exposedTool, []childFailure) {

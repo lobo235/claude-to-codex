@@ -16,6 +16,7 @@ import (
 )
 
 const fakeChildEnv = "CLAUDE_TO_CODEX_FAKE_CHILD"
+const testServeEnv = "CLAUDE_TO_CODEX_TEST_SERVE"
 
 type fakeToolOutput struct {
 	Server string `json:"server"`
@@ -25,6 +26,13 @@ type fakeToolOutput struct {
 }
 
 func TestMain(m *testing.M) {
+	if os.Getenv(testServeEnv) == "1" {
+		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		if err := runServe(logger); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if name := os.Getenv(fakeChildEnv); name != "" {
 		if err := runFakeChildServer(name); err != nil {
 			log.Fatal(err)

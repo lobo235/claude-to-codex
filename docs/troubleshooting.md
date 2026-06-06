@@ -130,6 +130,23 @@ The output should show `CLAUDE_BRIDGE_PROJECT_ROOT` under `env`.
 
 `codex-with-claude` is installed too; it is the same launcher with a more explicit name.
 
+If project MCP headers reference variables from a private env file, source
+that file before launching `cwc`. `.mcp.json` stores only references such
+as `${REMOTE_TOOLS_TOKEN}`; neither Codex nor `claude-to-codex` reads
+arbitrary env files automatically.
+
+```bash
+cd /path/to/project
+set -a
+source ~/.private-mcp/env
+set +a
+cwc
+```
+
+After changing a token, env file, `.mcp.json`, or project root, start a
+new Codex session. Existing Codex-managed MCP server processes keep the
+environment and project root they had when that session started.
+
 ## `inspect --tools` Reports Child Failures
 
 This means `claude-to-codex` found the child MCP server config but could not connect to that child.
@@ -184,6 +201,37 @@ When launched with `cwc`, variables referenced in Claude MCP config are
 added to Codex's per-session `claude-bridge` `env_vars` override. If a
 variable is not present in the launching environment, the child still
 fails closed with the missing variable name.
+
+## Tool Call Fails After Tools Were Listed
+
+If a child server's tools appear but a later call fails with a raw
+message like `tools/call`, `client is closing`, or `EOF`, the child MCP
+connection closed after registration. Common causes are a stale Codex
+session with an old token or project root, an HTTP/SSE auth failure after
+the stream was established, a remote server restart, or a network
+disconnect.
+
+Restart Codex from the intended project after exporting the needed env
+vars:
+
+```bash
+cd /path/to/project
+set -a
+source ~/.private-mcp/env
+set +a
+cwc
+```
+
+For slow remote MCP servers, increase the bridge child-operation budget
+before launching Codex:
+
+```bash
+CLAUDE_BRIDGE_OPERATION_TIMEOUT=180s cwc
+```
+
+A timeout normally reports `context deadline exceeded` or a timeout hint.
+An EOF/client-closing error without that timeout wording is more likely a
+closed child connection than the bridge's operation budget firing.
 
 ## Tools Are Child-Prefixed
 
