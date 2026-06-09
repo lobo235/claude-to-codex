@@ -108,7 +108,7 @@ func TestServeProcessUsesCodexForwardedProjectEnvForSSEHeader(t *testing.T) {
 	}
 	writeJSON(t, project+"/.mcp.json", map[string]any{
 		"mcpServers": map[string]any{
-			"example": map[string]any{
+			"remote-tools": map[string]any{
 				"type": "sse",
 				"url":  fixture.URL + "/sse",
 				"headers": map[string]string{
@@ -140,12 +140,12 @@ func TestServeProcessUsesCodexForwardedProjectEnvForSSEHeader(t *testing.T) {
 		}
 		names = append(names, tool.Name)
 	}
-	if !slices.Contains(names, "example__example_read") {
-		t.Fatalf("tools = %v, want example__example_read", names)
+	if !slices.Contains(names, "remote-tools__example_read") {
+		t.Fatalf("tools = %v, want remote-tools__example_read", names)
 	}
 
 	res, err := session.CallTool(ctx, &mcpsdk.CallToolParams{
-		Name: "example__example_read",
+		Name: "remote-tools__example_read",
 		Arguments: map[string]any{
 			"target":    "sample",
 			"statement": "SELECT 3 AS item_count",

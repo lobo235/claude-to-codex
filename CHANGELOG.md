@@ -112,7 +112,7 @@
 - Keep generated Codex agent filenames hyphenated while using
   underscore-style Codex agent `name` values.
 - Pin MCP compatibility smoke-test npm packages to exact versions.
-- Pin GitHub and self-hosted workflow actions to commit SHAs.
+- Pin public and self-hosted workflow actions to commit SHAs.
 - Update setup, architecture, cold-start, troubleshooting, and MCP docs
   for agent sync and the hardened metadata generation path.
 
