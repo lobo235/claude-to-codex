@@ -120,14 +120,20 @@ esac
 export CLAUDE_BRIDGE_PROJECT_ROOT="${CLAUDE_BRIDGE_PROJECT_ROOT:-$(find_root)}"
 
 if command -v claude-to-codex >/dev/null 2>&1; then
-  if ! claude-to-codex sync-skills --quiet; then
-    printf '%s: warning: failed to sync Claude skills into Codex skills\n' "$launcher_name" >&2
-  fi
-  if ! claude-to-codex sync-agents --quiet --project "$CLAUDE_BRIDGE_PROJECT_ROOT"; then
-    printf '%s: warning: failed to sync Claude agents into Codex agents\n' "$launcher_name" >&2
-  fi
-  if ! claude-to-codex sync-commands --quiet; then
-    printf '%s: warning: failed to sync Claude slash commands into Codex skills\n' "$launcher_name" >&2
+  if [[ -n "${CLAUDE_TO_CODEX_ARTIFACT_CACHE_DIR:-}" ]]; then
+    if ! claude-to-codex sync-artifacts --quiet --project "$CLAUDE_BRIDGE_PROJECT_ROOT"; then
+      printf '%s: warning: failed to sync Claude artifacts through automation cache\n' "$launcher_name" >&2
+    fi
+  else
+    if ! claude-to-codex sync-skills --quiet; then
+      printf '%s: warning: failed to sync Claude skills into Codex skills\n' "$launcher_name" >&2
+    fi
+    if ! claude-to-codex sync-agents --quiet --project "$CLAUDE_BRIDGE_PROJECT_ROOT"; then
+      printf '%s: warning: failed to sync Claude agents into Codex agents\n' "$launcher_name" >&2
+    fi
+    if ! claude-to-codex sync-commands --quiet; then
+      printf '%s: warning: failed to sync Claude slash commands into Codex skills\n' "$launcher_name" >&2
+    fi
   fi
 else
   printf '%s: warning: claude-to-codex is not on PATH; Claude artifacts were not synced\n' "$launcher_name" >&2

@@ -1,6 +1,20 @@
 # Changelog
 
-## [Unreleased]
+## [v0.3.4] - 2026-06-09
+
+### Added
+
+- Add `sync-artifacts` for headless automation workers: generated Claude
+  skills, slash commands, user agents, and project agents are refreshed in
+  a schema/versioned persistent cache and materialized into allocation-local
+  `CODEX_HOME`.
+- Have `cwc` use `sync-artifacts` automatically when
+  `CLAUDE_TO_CODEX_ARTIFACT_CACHE_DIR` is set.
+
+### Security
+
+- Keep Codex auth, config, sessions, logs, and project `.codex` runtime
+  state out of the automation artifact cache.
 
 ## [v0.3.3] - 2026-06-09
 

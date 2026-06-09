@@ -127,11 +127,14 @@ func syncClaudeSkills(home string) ([]skillSyncResult, error) {
 }
 
 func syncClaudeSkillsWithProgress(home string, progress io.Writer) ([]skillSyncResult, error) {
+	return syncClaudeSkillsTo(home, filepath.Join(home, ".codex", "skills"), progress)
+}
+
+func syncClaudeSkillsTo(home, codexSkillsRoot string, progress io.Writer) ([]skillSyncResult, error) {
 	skills, err := loadClaudeSkills(filepath.Join(home, ".claude", "skills"))
 	if err != nil {
 		return nil, err
 	}
-	codexSkillsRoot := filepath.Join(home, ".codex", "skills")
 	progressState := newSkillSyncProgress(progress, codexSkillsRoot, skills)
 	var results []skillSyncResult
 	for _, skill := range skills {
@@ -364,11 +367,14 @@ func samePath(a, b string) (bool, error) {
 }
 
 func syncClaudeCommands(home string) ([]commandSyncResult, error) {
+	return syncClaudeCommandsTo(home, filepath.Join(home, ".codex", "skills"))
+}
+
+func syncClaudeCommandsTo(home, skillsRoot string) ([]commandSyncResult, error) {
 	commands, err := loadClaudeCommands(filepath.Join(home, ".claude", "commands"))
 	if err != nil {
 		return nil, err
 	}
-	skillsRoot := filepath.Join(home, ".codex", "skills")
 	var results []commandSyncResult
 	for _, command := range commands {
 		result, err := syncClaudeCommand(skillsRoot, command)

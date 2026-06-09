@@ -162,6 +162,7 @@ claude-to-codex bridge-env-vars --project "$PWD"
 claude-to-codex sync-skills
 claude-to-codex sync-agents
 claude-to-codex sync-commands
+claude-to-codex sync-artifacts --artifact-cache-dir /tmp/cwc-cache --project "$PWD"
 ```
 
 Then launch Codex from a project:
@@ -297,6 +298,26 @@ The `cwc` launcher also syncs Claude user and project artifacts before launching
 Generated skill wrappers and agent TOML files point back to the Claude source. Claude remains canonical. Hand-written Codex skills and agents are not overwritten. Descriptions are generated with `codex exec` using a fast model, then cached by source hash so unchanged artifacts are not rewritten on every launch. The generator receives only Claude metadata and a bounded, sanitized preview, not the full skill or agent body.
 
 Set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL` to override the default fast model, or set `CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER=1` to force deterministic fallback descriptions.
+
+For headless automation, set `CLAUDE_TO_CODEX_ARTIFACT_CACHE_DIR`.
+When that variable is present, `cwc` runs `sync-artifacts` instead of the
+desktop sync sequence. Generated wrappers and agent TOML are refreshed in
+a schema/versioned persistent cache, then materialized into `CODEX_HOME`
+if set, otherwise `$HOME/.codex`. The cache contains only generated
+artifacts, not Codex auth, config, sessions, logs, or other runtime state.
+Project agents are cached outside the repository and materialized into
+`CODEX_HOME/agents`, so automation mode does not write
+`<project>/.codex/agents`.
+
+Auto-agents workers should mount persistent storage at
+`/mnt/fast/auto-agents` and keep `$HOME`/`CODEX_HOME` allocation-local:
+
+```bash
+HOME="$ALLOC_HOME" \
+CODEX_HOME="$ALLOC_CODEX_HOME" \
+CLAUDE_TO_CODEX_ARTIFACT_CACHE_DIR=/mnt/fast/auto-agents/cwc-cache \
+cwc exec ...
+```
 
 When `cwc` has to generate frontmatter or agent descriptions, it prints progress such as:
 

@@ -18,7 +18,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|bridge-env-vars|sync-commands|sync-skills|sync-agents|version", os.Args[0])
+		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|bridge-env-vars|sync-commands|sync-skills|sync-agents|sync-artifacts|version", os.Args[0])
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	switch os.Args[1] {
@@ -56,6 +56,10 @@ func main() {
 		}
 	case "sync-agents":
 		if err := runSyncAgents(os.Args[2:]); err != nil {
+			fatalf("%v", err)
+		}
+	case "sync-artifacts":
+		if err := runSyncArtifacts(os.Args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "version", "--version", "-v":

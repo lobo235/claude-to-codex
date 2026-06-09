@@ -27,6 +27,7 @@ claude-to-codex bridge-env-vars [--project <dir>]
 claude-to-codex sync-skills
 claude-to-codex sync-agents [--project <dir>|--project-only <dir>]
 claude-to-codex sync-commands
+claude-to-codex sync-artifacts [--project <dir>] [--artifact-cache-dir <dir>] [--codex-home <dir>]
 claude-to-codex version
 ```
 
@@ -39,7 +40,7 @@ as a per-session config override. It includes
 `CLAUDE_BRIDGE_PROJECT_ROOT` plus variable names referenced by Claude MCP
 config strings.
 
-`sync-skills`, `sync-agents`, and `sync-commands` are safe to run repeatedly.
+`sync-skills`, `sync-agents`, `sync-commands`, and `sync-artifacts` are safe to run repeatedly.
 
 ## Config Loading
 
@@ -142,6 +143,36 @@ Generated agent filenames keep Claude's hyphenated filename, while the Codex `na
 `sync-agents` updates and deletes only generated TOML files containing the claude-to-codex marker. Hand-written Codex agents are skipped. Sparse agent descriptions use the same bounded preview generation path as skills; slow generation writes progress to stderr in quiet mode.
 
 Claude slash commands are converted into generated Codex skill wrappers. Generated files include a marker so `claude-to-codex` can update its own output without overwriting hand-written Codex skills.
+
+`sync-artifacts` is the headless automation interface. It writes generated
+skills, slash-command wrappers, user agents, and optional project agents
+into a persistent cache under
+`<cache>/schema-v1/claude-to-codex-<version>/...`, then materializes only
+marked generated artifacts into `CODEX_HOME` or the `--codex-home`
+destination. The cache refresh is protected by an atomic `mkdir` lock so
+multiple workers can share an NFS cache without rewriting the same
+generated files concurrently.
+
+Automation cache mode is enabled by setting
+`CLAUDE_TO_CODEX_ARTIFACT_CACHE_DIR` before launching `cwc`. In that mode,
+`cwc` runs `sync-artifacts --project <root>` instead of the desktop
+`sync-skills` / `sync-agents` / `sync-commands` sequence. The persistent
+cache stores only generated wrappers and agent TOML files. It does not
+copy Codex `auth.json`, `config.toml`, sessions, logs, or other runtime
+state. Project agents are cached outside the repository and materialized
+into the allocation-local `CODEX_HOME/agents`; automation mode does not
+write `<project>/.codex/agents`.
+
+Auto-agents workers should mount persistent storage at
+`/mnt/fast/auto-agents`, keep `$HOME` and `CODEX_HOME` allocation-local,
+and launch `cwc` like:
+
+```bash
+HOME="$ALLOC_HOME" \
+CODEX_HOME="$ALLOC_CODEX_HOME" \
+CLAUDE_TO_CODEX_ARTIFACT_CACHE_DIR=/mnt/fast/auto-agents/cwc-cache \
+cwc exec ...
+```
 
 ## Install And Uninstall Boundaries
 

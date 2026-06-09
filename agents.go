@@ -109,6 +109,10 @@ func syncClaudeAgentsWithProgress(home, project, projectOnly string, progress io
 	if err != nil {
 		return nil, err
 	}
+	return syncClaudeAgentsWithScopes(scopes, progress)
+}
+
+func syncClaudeAgentsWithScopes(scopes []agentSyncScope, progress io.Writer) ([]agentSyncResult, error) {
 	var allAgents []claudeAgent
 	scopeAgents := map[string][]claudeAgent{}
 	var results []agentSyncResult
