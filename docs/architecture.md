@@ -130,19 +130,19 @@ timeout, or closed-connection failures.
 
 ## Artifact Sync
 
-Claude skills are converted into generated Codex-compatible skill wrappers. The generated file supplies valid Codex frontmatter, points back to the Claude `SKILL.md`, and includes a source snapshot so Claude skills with missing or incompatible frontmatter still load in Codex.
+Claude skills are converted into generated Codex-compatible skill wrappers under `$CODEX_HOME/skills`, or `~/.codex/skills` when `CODEX_HOME` is unset. The generated file supplies valid Codex frontmatter, points back to the Claude `SKILL.md`, and includes a source snapshot so Claude skills with missing or incompatible frontmatter still load in Codex.
 
 `sync-skills` asks `codex exec` to generate a concise, useful `description` with a fast model. The generator receives only Claude metadata and a bounded, sanitized preview, not the full skill body, and it runs from a temporary directory. Set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL` to override the default model, or `CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER=1` to use deterministic fallback descriptions. Generated wrappers include `source-sha256`; if the source hash is unchanged, the wrapper is left untouched.
 
 When a skill wrapper needs generated frontmatter, `sync-skills --quiet` still writes progress to stderr so `cwc` is not silent during slow first-run work. It stays silent for unchanged wrappers.
 
-Claude agents are converted into generated Codex subagent TOML files. User agents from `~/.claude/agents/*.md` sync to `~/.codex/agents/*.toml`. Project agents from `<project>/.claude/agents/*.md` sync to `<project>/.codex/agents/*.toml` when `sync-agents --project <dir>` runs through `cwc`.
+Claude agents are converted into generated Codex subagent TOML files. User agents from `~/.claude/agents/*.md` sync to `$CODEX_HOME/agents/*.toml`, or `~/.codex/agents/*.toml` when `CODEX_HOME` is unset. Project agents from `<project>/.claude/agents/*.md` sync to `<project>/.codex/agents/*.toml` when `sync-agents --project <dir>` runs through `cwc`.
 
 Generated agent filenames keep Claude's hyphenated filename, while the Codex `name` field uses underscores. Claude `tools` frontmatter is preserved as advisory instruction text, not converted into Codex permissions. Generated agents omit `model`, `model_reasoning_effort`, and `sandbox_mode` so they inherit the active Codex session.
 
 `sync-agents` updates and deletes only generated TOML files containing the claude-to-codex marker. Hand-written Codex agents are skipped. Sparse agent descriptions use the same bounded preview generation path as skills; slow generation writes progress to stderr in quiet mode.
 
-Claude slash commands are converted into generated Codex skill wrappers. Generated files include a marker so `claude-to-codex` can update its own output without overwriting hand-written Codex skills.
+Claude slash commands are converted into generated Codex skill wrappers under `$CODEX_HOME/skills`, or `~/.codex/skills` when `CODEX_HOME` is unset. Generated files include a marker so `claude-to-codex` can update its own output without overwriting hand-written Codex skills.
 
 `sync-artifacts` is the headless automation interface. It writes generated
 skills, slash-command wrappers, user agents, and optional project agents

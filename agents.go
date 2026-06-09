@@ -159,7 +159,7 @@ func agentSyncScopes(home, project, projectOnly string) ([]agentSyncScope, error
 	scopes := []agentSyncScope{{
 		Name:      "user",
 		SourceDir: filepath.Join(home, ".claude", "agents"),
-		TargetDir: filepath.Join(home, ".codex", "agents"),
+		TargetDir: filepath.Join(userCodexHome(home), "agents"),
 	}}
 	if project != "" {
 		projectDir, err := filepath.Abs(project)

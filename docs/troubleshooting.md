@@ -266,7 +266,7 @@ Only valid skill names are synced. Names must match:
 ^[a-z0-9][a-z0-9-]*$
 ```
 
-`claude-to-codex` creates generated Codex-compatible skill wrappers under `~/.codex/skills/<name>/SKILL.md`. This gives Codex valid frontmatter even when the source Claude skill uses a different format.
+`claude-to-codex` creates generated Codex-compatible skill wrappers under `$CODEX_HOME/skills/<name>/SKILL.md`, or `~/.codex/skills/<name>/SKILL.md` when `CODEX_HOME` is unset. This gives Codex valid frontmatter even when the source Claude skill uses a different format.
 
 `sync-skills` uses `codex exec` with a fast model to write a useful frontmatter description from Claude metadata and a bounded, sanitized preview, then records the source hash in the wrapper. Rerunning it should leave unchanged wrappers alone. If metadata generation fails, `claude-to-codex` falls back to a deterministic description so the skill still loads.
 
@@ -288,7 +288,7 @@ For project agents, run from the project through `cwc` or specify the project ex
 claude-to-codex sync-agents --project /path/to/project
 ```
 
-User agents are read from `~/.claude/agents/*.md` and written as generated TOML files under `~/.codex/agents/*.toml`. Project agents are read from `.claude/agents/*.md` and written under `.codex/agents/*.toml`.
+User agents are read from `~/.claude/agents/*.md` and written as generated TOML files under `$CODEX_HOME/agents/*.toml`, or `~/.codex/agents/*.toml` when `CODEX_HOME` is unset. Project agents are read from `.claude/agents/*.md` and written under `.codex/agents/*.toml`.
 
 `claude-to-codex` skips malformed agent files, empty agent bodies, invalid filenames, hand-written Codex agents, and duplicate Codex agent names. Generated agents contain this marker:
 
@@ -306,7 +306,7 @@ Run:
 claude-to-codex sync-commands
 ```
 
-Commands are read from `~/.claude/commands/*.md`. `claude-to-codex` creates generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
+Commands are read from `~/.claude/commands/*.md`. `claude-to-codex` creates generated Codex skill wrappers under `$CODEX_HOME/skills/<command>/SKILL.md`, or `~/.codex/skills/<command>/SKILL.md` when `CODEX_HOME` is unset.
 
 `claude-to-codex` skips a command if a hand-written Codex skill already exists at the same path. It updates only files that contain the generated marker:
 
@@ -331,7 +331,7 @@ If this fails, fix the child MCP server failure first. The error output should n
 To regenerate command skill wrappers created by `claude-to-codex`:
 
 ```bash
-find ~/.codex/skills -name SKILL.md -print | xargs grep -l "generated-by: claude-to-codex sync-commands"
+find "${CODEX_HOME:-$HOME/.codex}/skills" -name SKILL.md -print | xargs grep -l "generated-by: claude-to-codex sync-commands"
 claude-to-codex sync-commands
 ```
 

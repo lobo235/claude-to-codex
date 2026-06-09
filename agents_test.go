@@ -56,6 +56,35 @@ Review auth, secrets, and input handling.
 	}
 }
 
+func TestSyncClaudeAgentUsesActiveCodexHome(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	codexHome := filepath.Join(home, "active-codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	sourceDir := filepath.Join(home, ".claude", "agents")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "security-reviewer.md"), []byte("Review auth, secrets, and input handling.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := syncClaudeAgents(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "created" {
+		t.Fatalf("results = %#v, want one created agent", results)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "agents", "security-reviewer.toml")); err != nil {
+		t.Fatalf("generated agent was not written to active CODEX_HOME: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "agents", "security-reviewer.toml")); !os.IsNotExist(err) {
+		t.Fatalf("generated agent was written to home .codex despite CODEX_HOME: %v", err)
+	}
+}
+
 func TestSyncClaudeAgentUpdatesGeneratedAgentWhenSourceChanges(t *testing.T) {
 	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
 	home := t.TempDir()

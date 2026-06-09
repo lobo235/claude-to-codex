@@ -46,6 +46,21 @@ type claudeCommand struct {
 	ArgumentHint string
 }
 
+func userCodexHome(home string) string {
+	codexHome := os.Getenv("CODEX_HOME")
+	if codexHome == "" {
+		return filepath.Join(home, ".codex")
+	}
+	sessionHome, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(home, ".codex")
+	}
+	if filepath.Clean(home) != filepath.Clean(sessionHome) {
+		return filepath.Join(home, ".codex")
+	}
+	return codexHome
+}
+
 func runSyncCommands(args []string) error {
 	fs := flag.NewFlagSet("sync-commands", flag.ContinueOnError)
 	quiet := fs.Bool("quiet", false, "suppress unchanged sync output")
@@ -127,7 +142,7 @@ func syncClaudeSkills(home string) ([]skillSyncResult, error) {
 }
 
 func syncClaudeSkillsWithProgress(home string, progress io.Writer) ([]skillSyncResult, error) {
-	return syncClaudeSkillsTo(home, filepath.Join(home, ".codex", "skills"), progress)
+	return syncClaudeSkillsTo(home, filepath.Join(userCodexHome(home), "skills"), progress)
 }
 
 func syncClaudeSkillsTo(home, codexSkillsRoot string, progress io.Writer) ([]skillSyncResult, error) {
@@ -367,7 +382,7 @@ func samePath(a, b string) (bool, error) {
 }
 
 func syncClaudeCommands(home string) ([]commandSyncResult, error) {
-	return syncClaudeCommandsTo(home, filepath.Join(home, ".codex", "skills"))
+	return syncClaudeCommandsTo(home, filepath.Join(userCodexHome(home), "skills"))
 }
 
 func syncClaudeCommandsTo(home, skillsRoot string) ([]commandSyncResult, error) {

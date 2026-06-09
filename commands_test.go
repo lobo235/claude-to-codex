@@ -45,6 +45,34 @@ Command body.
 	}
 }
 
+func TestSyncClaudeCommandUsesActiveCodexHome(t *testing.T) {
+	home := t.TempDir()
+	codexHome := filepath.Join(home, "active-codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	commandDir := filepath.Join(home, ".claude", "commands")
+	if err := os.MkdirAll(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(commandDir, "wiki-onboard.md"), []byte("---\ndescription: test\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := syncClaudeCommands(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "created" {
+		t.Fatalf("results = %#v, want one created command", results)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills", "wiki-onboard", "SKILL.md")); err != nil {
+		t.Fatalf("generated skill was not written to active CODEX_HOME: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "wiki-onboard", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("generated skill was written to home .codex despite CODEX_HOME: %v", err)
+	}
+}
+
 func TestSyncClaudeCommandDoesNotOverwriteHandWrittenSkill(t *testing.T) {
 	home := t.TempDir()
 	commandDir := filepath.Join(home, ".claude", "commands")
@@ -149,6 +177,35 @@ func TestSyncClaudeSkillCreatesGeneratedWrapper(t *testing.T) {
 	}
 	if !strings.Contains(body, "Use the MCP server.") {
 		t.Fatalf("generated skill missing source snapshot:\n%s", body)
+	}
+}
+
+func TestSyncClaudeSkillUsesActiveCodexHome(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	home := t.TempDir()
+	codexHome := filepath.Join(home, "active-codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	claudeSkill := filepath.Join(home, ".claude", "skills", "example-mcp-skill")
+	if err := os.MkdirAll(claudeSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeSkill, "SKILL.md"), []byte("# Source\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := syncClaudeSkills(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "created" {
+		t.Fatalf("results = %#v, want one created skill", results)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills", "example-mcp-skill", "SKILL.md")); err != nil {
+		t.Fatalf("generated skill was not written to active CODEX_HOME: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "example-mcp-skill", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("generated skill was written to home .codex despite CODEX_HOME: %v", err)
 	}
 }
 

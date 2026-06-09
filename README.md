@@ -290,10 +290,10 @@ present in the environment that launches `cwc`.
 
 The `cwc` launcher also syncs Claude user and project artifacts before launching Codex:
 
-- `~/.claude/skills/<name>/SKILL.md` is mirrored into a generated Codex-compatible wrapper at `~/.codex/skills/<name>/SKILL.md`.
-- `~/.claude/agents/*.md` is mirrored into generated Codex agent TOML under `~/.codex/agents/*.toml`.
+- `~/.claude/skills/<name>/SKILL.md` is mirrored into a generated Codex-compatible wrapper at `$CODEX_HOME/skills/<name>/SKILL.md`, or `~/.codex/skills/<name>/SKILL.md` when `CODEX_HOME` is unset.
+- `~/.claude/agents/*.md` is mirrored into generated Codex agent TOML under `$CODEX_HOME/agents/*.toml`, or `~/.codex/agents/*.toml` when `CODEX_HOME` is unset.
 - `<project>/.claude/agents/*.md` is mirrored into generated Codex agent TOML under `<project>/.codex/agents/*.toml`.
-- `~/.claude/commands/*.md` is mirrored into generated Codex skill wrappers under `~/.codex/skills/<command>/SKILL.md`.
+- `~/.claude/commands/*.md` is mirrored into generated Codex skill wrappers under `$CODEX_HOME/skills/<command>/SKILL.md`, or `~/.codex/skills/<command>/SKILL.md` when `CODEX_HOME` is unset.
 
 Generated skill wrappers and agent TOML files point back to the Claude source. Claude remains canonical. Hand-written Codex skills and agents are not overwritten. Descriptions are generated with `codex exec` using a fast model, then cached by source hash so unchanged artifacts are not rewritten on every launch. The generator receives only Claude metadata and a bounded, sanitized preview, not the full skill or agent body.
 
@@ -306,7 +306,7 @@ a schema/versioned persistent cache, then materialized into `CODEX_HOME`
 if set, otherwise `$HOME/.codex`. The cache contains only generated
 artifacts, not Codex auth, config, sessions, logs, or other runtime state.
 Project agents are cached outside the repository and materialized into
-`CODEX_HOME/agents`, so automation mode does not write
+`$CODEX_HOME/agents`, so automation mode does not write
 `<project>/.codex/agents`.
 
 Auto-agents workers should mount persistent storage at

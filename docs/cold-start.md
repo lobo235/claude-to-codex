@@ -180,7 +180,7 @@ These commands are safe to repeat. They do not overwrite hand-written Codex skil
 
 The first `cwc` launch may print progress while frontmatter is generated, such as `generating frontmatter for <skill_name> [1/20 skills]`. Later launches stay quiet when nothing changed.
 
-`sync-agents` converts Claude agents from `~/.claude/agents/*.md` into Codex subagent TOML files at `~/.codex/agents/*.toml`. When launched through `cwc`, project agents from `.claude/agents/*.md` are also synced into `.codex/agents/*.toml` for the current project. Agent descriptions are generated from bounded previews and cached by source hash.
+`sync-agents` converts Claude agents from `~/.claude/agents/*.md` into Codex subagent TOML files at `$CODEX_HOME/agents/*.toml`, or `~/.codex/agents/*.toml` when `CODEX_HOME` is unset. When launched through `cwc`, project agents from `.claude/agents/*.md` are also synced into `.codex/agents/*.toml` for the current project. Agent descriptions are generated from bounded previews and cached by source hash.
 
 ## Verify Claude MCP Servers
 

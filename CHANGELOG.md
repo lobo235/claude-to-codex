@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+## [v0.3.5] - 2026-06-09
+
+### Added
+
+- Add an internal sanitized public mirror publishing flow and move
+  self-hosted CI configuration under `.internal`.
+
+### Changed
+
+- Sanitize public mirror terminology used in release tooling and tests.
+
+### Fixed
+
+- Honor active `CODEX_HOME` when syncing Claude user skills, slash
+  commands, and agents into generated Codex artifacts.
+
 ## [v0.3.4] - 2026-06-09
 
 ### Added
