@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [v0.3.3] - 2026-06-09
+
+### Fixed
+
+- Preserve the Codex `claude-bridge` command and arguments when `cwc`
+  injects per-session `env_vars`, so the bridge remains usable in fresh
+  sessions that need project-scoped MCP environment forwarding.
+
 ## [v0.3.2] - 2026-06-06
 
 ### Changed
