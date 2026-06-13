@@ -673,18 +673,9 @@ func generateSkillFrontmatterWithCodex(skill claudeSkill, fallback string) (gene
 	}
 	defer os.Remove(outPath)
 
-	cmd := exec.CommandContext(ctx, "codex", "-a", "never", "exec",
-		"--model", model,
-		"--sandbox", "read-only",
-		"--skip-git-repo-check",
-		"--ephemeral",
-		"--ignore-rules",
-		"--color", "never",
-		"--cd", os.TempDir(),
-		"-o", outPath,
-		"-",
-	)
+	cmd := exec.CommandContext(ctx, "codex", codexMetadataExecArgs(model, outPath)...)
 	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Env = codexMetadataEnv()
 	if _, err := cmd.Output(); err != nil {
 		return generatedSkillFrontmatter{}, err
 	}
@@ -698,6 +689,32 @@ func generateSkillFrontmatterWithCodex(skill claudeSkill, fallback string) (gene
 	}
 	metadata.Description = sanitizeGeneratedDescription(metadata.Description)
 	return metadata, nil
+}
+
+func codexMetadataExecArgs(model, outPath string) []string {
+	args := []string{
+		"-a", "never",
+		"exec",
+		"--model", model,
+		"--sandbox", "read-only",
+		"--skip-git-repo-check",
+		"--ephemeral",
+		"--ignore-user-config",
+		"--ignore-rules",
+		"--color", "never",
+		"--cd", os.TempDir(),
+		"-o", outPath,
+		"-",
+	}
+	return args
+}
+
+func codexMetadataEnv() []string {
+	var extra []string
+	if value, ok := os.LookupEnv("CODEX_HOME"); ok {
+		extra = append(extra, "CODEX_HOME="+value)
+	}
+	return mergeEnv(baselineEnv(), extra)
 }
 
 func buildSkillFrontmatterPrompt(skill claudeSkill, fallback string) string {

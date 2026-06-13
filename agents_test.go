@@ -119,6 +119,49 @@ func TestSyncClaudeAgentUpdatesGeneratedAgentWhenSourceChanges(t *testing.T) {
 	}
 }
 
+func TestAgentDescriptionCodexArgsStayToolFreeForUntrustedPreview(t *testing.T) {
+	args := codexMetadataExecArgs("gpt-test", "/tmp/agent-description.json")
+	if len(args) < 4 {
+		t.Fatalf("args too short: %#v", args)
+	}
+	for _, arg := range args {
+		for _, forbidden := range []string{"mcp_servers", "claude-bridge", "env_vars", "EXPLICIT_TOKEN"} {
+			if strings.Contains(arg, forbidden) {
+				t.Fatalf("agent metadata args expose %q in %#v", forbidden, args)
+			}
+		}
+	}
+	if indexOf(args, "--ignore-user-config") < 0 {
+		t.Fatalf("args must ignore user config to avoid loading MCP servers: %#v", args)
+	}
+	if execIndex := indexOf(args, "exec"); execIndex < 0 {
+		t.Fatalf("args missing exec: %#v", args)
+	}
+}
+
+func TestAgentDescriptionCodexEnvUsesRestrictedBaseline(t *testing.T) {
+	t.Setenv("PATH", "/bin")
+	t.Setenv("HOME", "/tmp/home")
+	t.Setenv("CODEX_HOME", "/tmp/codex-home")
+	t.Setenv("CLAUDE_BRIDGE_PROJECT_ROOT", "/tmp/project")
+	t.Setenv("EXPLICIT_TOKEN", "secret")
+	t.Setenv("GITHUB_TOKEN", "secret")
+
+	env := codexMetadataEnv()
+	for _, want := range []string{"PATH=/bin", "HOME=/tmp/home", "CODEX_HOME=/tmp/codex-home"} {
+		if !containsEnv(env, want) {
+			t.Fatalf("agent metadata env missing %q: %#v", want, env)
+		}
+	}
+	for _, forbidden := range []string{"CLAUDE_BRIDGE_PROJECT_ROOT=", "EXPLICIT_TOKEN=", "GITHUB_TOKEN="} {
+		for _, entry := range env {
+			if strings.HasPrefix(entry, forbidden) {
+				t.Fatalf("agent metadata env leaked %q in %#v", forbidden, env)
+			}
+		}
+	}
+}
+
 func TestSyncClaudeAgentDoesNotOverwriteHandWrittenAgent(t *testing.T) {
 	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
 	home := t.TempDir()

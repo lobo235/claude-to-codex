@@ -609,18 +609,9 @@ func generateAgentDescriptionWithCodex(agent claudeAgent, fallback string) (gene
 	}
 	defer os.Remove(outPath)
 
-	cmd := exec.CommandContext(ctx, "codex", "-a", "never", "exec",
-		"--model", model,
-		"--sandbox", "read-only",
-		"--skip-git-repo-check",
-		"--ephemeral",
-		"--ignore-rules",
-		"--color", "never",
-		"--cd", os.TempDir(),
-		"-o", outPath,
-		"-",
-	)
+	cmd := exec.CommandContext(ctx, "codex", codexMetadataExecArgs(model, outPath)...)
 	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Env = codexMetadataEnv()
 	if _, err := cmd.Output(); err != nil {
 		return generatedAgentDescription{}, err
 	}

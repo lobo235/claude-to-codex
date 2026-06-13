@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-06-13
+
+### Added
+
+- Expand the built-in no-secret MCP compatibility smoke matrix to include
+  Fetch, Time, Git, and SQLite via pinned `uvx` packages, and add
+  `--probe` for optional functional tool-call validation.
+
+### Changed
+
+- Generate Codex skill frontmatter and agent descriptions through an
+  isolated, tool-free `codex exec` invocation that ignores user Codex config
+  and inherits only a restricted baseline environment.
+
 ## [v0.3.5] - 2026-06-09
 
 ### Added

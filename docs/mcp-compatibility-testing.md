@@ -29,14 +29,16 @@ The script builds `bin/claude-to-codex`, creates an isolated temporary
 claude-to-codex inspect --tools
 ```
 
-The built-in npm-based servers are pinned to exact package versions, but
-the smoke script still executes registry packages as your local user. It
-uses an isolated temporary `HOME`; it is not an OS sandbox.
+The built-in npm and uvx-based servers are pinned to exact package
+versions, but the smoke script still executes registry packages as your
+local user. It uses an isolated temporary `HOME`; it is not an OS
+sandbox.
 
 The built-in matrix currently covers Everything, Chrome DevTools,
-Context7, Desktop Commander, Filesystem, Memory, Playwright, and
-Sequential Thinking. Expand it with `--config` when testing servers
-that need credentials, local databases, Docker, or Python `uvx`.
+Context7, Desktop Commander, Filesystem, Memory, Playwright, Sequential
+Thinking, Fetch, Time, Git, and SQLite. Expand it with `--config` when
+testing servers that need credentials, external backing services, or
+Docker.
 
 This avoids modifying `~/.claude.json` or any real project `.mcp.json`.
 The harness sets `CLAUDE_BRIDGE_OPERATION_TIMEOUT=180s` by default so
@@ -48,9 +50,15 @@ Use a custom matrix with Claude's normal config shape:
 scripts/mcp-compat-smoke --config docs/mcp-compatibility.matrix.example.json
 ```
 
-For functional validation, build and run the probe. It connects through
-`claude-bridge`, lists tools, and calls a curated set of low-risk tools
-when present:
+For functional validation, run the smoke with `--probe`. It connects
+through `claude-bridge`, lists tools, and calls a curated set of
+low-risk tools when present:
+
+```sh
+scripts/mcp-compat-smoke --probe
+```
+
+The probe can also be built and run directly:
 
 ```sh
 go build -o bin/mcp-compat-probe ./tools/mcp-compat-probe

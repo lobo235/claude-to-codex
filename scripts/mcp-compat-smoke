@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/mcp-compat-smoke [--config path/to/mcp.json] [--project-config path/to/.mcp.json] [--no-build]
+  scripts/mcp-compat-smoke [--config path/to/mcp.json] [--project-config path/to/.mcp.json] [--no-build] [--probe] [--print-default-config]
 
 Runs claude-to-codex against an isolated temporary HOME and project root.
 The config file must use Claude's normal shape:
@@ -12,8 +12,10 @@ The config file must use Claude's normal shape:
   {"mcpServers":{"name":{"command":"npx","args":["-y","pkg"]}}}
 
 If --config is omitted, a no-secret core matrix is generated with common public MCP servers.
-The built-in matrix executes pinned npm packages with npx in an isolated HOME,
-but not in an OS sandbox.
+The built-in matrix executes pinned npm packages with npx and pinned Python
+packages with uvx in an isolated HOME, but not in an OS sandbox.
+
+Use --probe to run the functional tool-call probe after capability discovery.
 USAGE
 }
 
@@ -21,6 +23,68 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 config_path=""
 project_config_path=""
 build=1
+print_default_config=0
+probe=0
+
+write_default_config() {
+  local allowed_dir="$1"
+  local project_dir="$2"
+  local sqlite_db="$3"
+  cat <<JSON
+{
+  "mcpServers": {
+    "everything": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-everything@2026.1.26"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@0.26.0", "--headless"]
+    },
+    "desktop-commander": {
+      "command": "npx",
+      "args": ["-y", "@wonderwhy-er/desktop-commander@0.2.41"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.1.14", "$allowed_dir"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory@2026.1.26"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@0.0.75", "--headless"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2025.12.18"]
+    },
+    "context7": {
+      "type": "streamable-http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch==2026.6.4"]
+    },
+    "time": {
+      "command": "uvx",
+      "args": ["mcp-server-time==2026.6.4"]
+    },
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git==2026.6.4", "--repository", "$project_dir"]
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite==2025.4.25", "--db-path", "$sqlite_db"]
+    }
+  }
+}
+JSON
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,6 +100,14 @@ while [[ $# -gt 0 ]]; do
       build=0
       shift
       ;;
+    --probe)
+      probe=1
+      shift
+      ;;
+    --print-default-config)
+      print_default_config=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -48,8 +120,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$print_default_config" -eq 1 ]]; then
+  write_default_config "/tmp" "/tmp" "/tmp/mcp-compat-smoke.sqlite"
+  exit 0
+fi
+
 if [[ "$build" -eq 1 ]]; then
   make -C "$repo_root" build >/dev/null
+  if [[ "$probe" -eq 1 ]]; then
+    go build -trimpath -buildvcs=false -o "$repo_root/bin/mcp-compat-probe" "$repo_root/tools/mcp-compat-probe"
+  fi
 fi
 
 tmp="$(mktemp -d)"
@@ -61,50 +141,16 @@ trap cleanup EXIT
 home_dir="$tmp/home"
 project_dir="$tmp/project"
 allowed_dir="$tmp/allowed-files"
+sqlite_db="$tmp/compat.sqlite"
 mkdir -p "$home_dir" "$project_dir" "$allowed_dir"
 printf 'claude-bridge compatibility smoke fixture\n' >"$allowed_dir/example.txt"
+: >"$sqlite_db"
+git -C "$project_dir" init -q
 
 if [[ -n "$config_path" ]]; then
   cp "$config_path" "$home_dir/.claude.json"
 else
-  cat >"$home_dir/.claude.json" <<JSON
-	{
-	  "mcpServers": {
-	    "everything": {
-	      "command": "npx",
-	      "args": ["-y", "@modelcontextprotocol/server-everything@2026.1.26"]
-	    },
-	    "chrome-devtools": {
-	      "command": "npx",
-	      "args": ["-y", "chrome-devtools-mcp@0.26.0", "--headless"]
-	    },
-	    "desktop-commander": {
-	      "command": "npx",
-	      "args": ["-y", "@wonderwhy-er/desktop-commander@0.2.41"]
-	    },
-	    "filesystem": {
-	      "command": "npx",
-	      "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.1.14", "$allowed_dir"]
-	    },
-	    "memory": {
-	      "command": "npx",
-	      "args": ["-y", "@modelcontextprotocol/server-memory@2026.1.26"]
-	    },
-	    "playwright": {
-	      "command": "npx",
-	      "args": ["-y", "@playwright/mcp@0.0.75", "--headless"]
-	    },
-	    "sequential-thinking": {
-	      "command": "npx",
-	      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2025.12.18"]
-	    },
-    "context7": {
-      "type": "streamable-http",
-      "url": "https://mcp.context7.com/mcp"
-    }
-  }
-}
-JSON
+  write_default_config "$allowed_dir" "$project_dir" "$sqlite_db" >"$home_dir/.claude.json"
 fi
 
 if [[ -n "$project_config_path" ]]; then
@@ -119,3 +165,14 @@ HOME="$home_dir" \
 CLAUDE_BRIDGE_PROJECT_ROOT="$project_dir" \
 CLAUDE_BRIDGE_OPERATION_TIMEOUT="${CLAUDE_BRIDGE_OPERATION_TIMEOUT:-180s}" \
 "$repo_root/bin/claude-to-codex" inspect --tools
+
+if [[ "$probe" -eq 1 ]]; then
+  echo
+  echo "Running functional probe"
+  HOME="$home_dir" \
+  CLAUDE_BRIDGE_PROJECT_ROOT="$project_dir" \
+  CLAUDE_BRIDGE_OPERATION_TIMEOUT="${CLAUDE_BRIDGE_OPERATION_TIMEOUT:-180s}" \
+  "$repo_root/bin/mcp-compat-probe" \
+    -bridge "$repo_root/bin/claude-to-codex" \
+    -allowed-file "$allowed_dir/example.txt"
+fi

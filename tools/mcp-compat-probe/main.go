@@ -124,6 +124,18 @@ func (c *callFlags) Set(value string) error {
 
 func probes(allowedFile string) []probe {
 	ps := []probe{
+		{name: "everything__get-structured-content", args: map[string]any{}},
+		{name: "desktop-commander__get_config", args: map[string]any{}},
+		{name: "filesystem__list_allowed_directories", args: map[string]any{}},
+		{name: "memory__read_graph", args: map[string]any{}},
+		{name: "sequential-thinking__sequentialthinking", args: map[string]any{
+			"thought":           "compatibility probe",
+			"thoughtNumber":     1,
+			"totalThoughts":     1,
+			"nextThoughtNeeded": false,
+		}},
+		{name: "time__get_current_time", args: map[string]any{"timezone": "UTC"}},
+		{name: "sqlite__list_tables", args: map[string]any{}},
 		{name: "get-structured-content", args: map[string]any{}},
 		{name: "get_config", args: map[string]any{}},
 		{name: "list_allowed_directories", args: map[string]any{}},
