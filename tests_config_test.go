@@ -38,6 +38,173 @@ func TestLoadClaudeServersKeepsUserAndProjectScope(t *testing.T) {
 	}
 }
 
+func TestLoadClaudeServersIncludesClaudeLocalScope(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "repo")
+	for _, dir := range []string{home, project} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := `{
+		"mcpServers": {
+			"user-tools": {"command":"user-mcp"}
+		},
+		"projects": {
+			"` + project + `": {
+				"mcpServers": {
+					"local-tools": {"command":"local-mcp"}
+				}
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	servers, err := loadClaudeServers(home, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 2 {
+		t.Fatalf("got %d servers, want 2", len(servers))
+	}
+	if servers[0].Name != "user-tools" || servers[0].Scope != "user" || servers[0].WorkDir != "" {
+		t.Fatalf("user server = %#v", servers[0])
+	}
+	if servers[1].Name != "local-tools" || servers[1].Scope != "local" || servers[1].WorkDir != project {
+		t.Fatalf("local server = %#v", servers[1])
+	}
+}
+
+func TestLoadClaudeServersLetsLocalScopeOverrideUserScope(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "repo")
+	for _, dir := range []string{home, project} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := `{
+		"mcpServers": {
+			"wiki": {"type":"http","url":"https://user.example.invalid/mcp","headers":{"Authorization":"Bearer user-token"}}
+		},
+		"projects": {
+			"` + project + `": {
+				"mcpServers": {
+					"wiki": {"type":"http","url":"https://project.example.invalid/mcp","headers":{"Authorization":"Bearer ${WIKI_TOKEN}"}}
+				}
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	servers, err := loadClaudeServers(home, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("got %d servers, want 1", len(servers))
+	}
+	server := servers[0]
+	if server.Name != "wiki" || server.Scope != "local" || server.WorkDir != project {
+		t.Fatalf("server = %#v, want local wiki override", server)
+	}
+	if got := server.Config.URL; got != "https://project.example.invalid/mcp" {
+		t.Fatalf("url = %q, want project override", got)
+	}
+	if got := server.Config.Headers["Authorization"]; got != "Bearer ${WIKI_TOKEN}" {
+		t.Fatalf("authorization header = %q", got)
+	}
+}
+
+func TestProjectClaudeConfigPrefersExactProjectPath(t *testing.T) {
+	project := filepath.Join(t.TempDir(), "repo")
+	cfg := ClaudeConfig{Projects: map[string]ProjectClaudeConfig{
+		project: {
+			MCPServers: map[string]MCPServerConfig{"exact": {Command: "exact-mcp"}},
+		},
+		project + string(os.PathSeparator) + ".": {
+			MCPServers: map[string]MCPServerConfig{"cleaned": {Command: "cleaned-mcp"}},
+		},
+	}}
+
+	projectConfig, ok, err := projectClaudeConfig(cfg, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("project config not found")
+	}
+	if _, ok := projectConfig.MCPServers["exact"]; !ok {
+		t.Fatalf("project config = %#v, want exact path entry", projectConfig.MCPServers)
+	}
+}
+
+func TestProjectClaudeConfigRejectsAmbiguousCleanedPaths(t *testing.T) {
+	project := filepath.Join(t.TempDir(), "repo")
+	cfg := ClaudeConfig{Projects: map[string]ProjectClaudeConfig{
+		project + string(os.PathSeparator) + ".": {
+			MCPServers: map[string]MCPServerConfig{"first": {Command: "first-mcp"}},
+		},
+		project + string(os.PathSeparator) + ".." + string(os.PathSeparator) + filepath.Base(project): {
+			MCPServers: map[string]MCPServerConfig{"second": {Command: "second-mcp"}},
+		},
+	}}
+
+	_, ok, err := projectClaudeConfig(cfg, project)
+	if err == nil {
+		t.Fatal("projectClaudeConfig accepted ambiguous cleaned project paths")
+	}
+	if ok {
+		t.Fatal("projectClaudeConfig reported a match despite ambiguity")
+	}
+	if !strings.Contains(err.Error(), "ambiguous local Claude MCP project entries") {
+		t.Fatalf("error = %q", err)
+	}
+}
+
+func TestLoadClaudeServersLetsProjectMCPOverrideClaudeLocalScope(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	project := filepath.Join(tmp, "repo")
+	for _, dir := range []string{home, project} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := `{
+		"projects": {
+			"` + project + `": {
+				"mcpServers": {
+					"tools": {"command":"local-mcp"}
+				}
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".mcp.json"), []byte(`{"mcpServers":{"tools":{"command":"project-mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	servers, err := loadClaudeServers(home, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("got %d servers, want 1", len(servers))
+	}
+	if servers[0].Name != "tools" || servers[0].Scope != "project" || servers[0].Config.Command != "project-mcp" {
+		t.Fatalf("server = %#v, want project .mcp.json override", servers[0])
+	}
+}
+
 func TestLoadClaudeServersOnlyLoadsRequestedProjectRoot(t *testing.T) {
 	tmp := t.TempDir()
 	home := filepath.Join(tmp, "home")

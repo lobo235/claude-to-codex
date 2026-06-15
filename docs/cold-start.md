@@ -195,7 +195,13 @@ claude-to-codex bridge-env-vars --project "$PWD"
 `inspect` should show:
 
 - user-scoped servers from `~/.claude.json`
+- Claude local-scope servers from the active project's entry in
+  `~/.claude.json`
 - project-scoped servers from `.mcp.json` when a project root is detected
+
+If the same server name appears in multiple scopes, project `.mcp.json`
+overrides Claude local scope, and Claude local scope overrides user
+scope.
 
 If a child MCP server fails, fix that child server first. `claude-to-codex` can continue when at least one child server works, but unavailable children will not expose tools to Codex.
 

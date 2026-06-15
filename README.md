@@ -134,14 +134,15 @@ If `claude-bridge` already exists and points at `claude-to-codex serve`, leave i
 Use `cwc` for normal project launches. It computes the environment
 variable names referenced by Claude MCP config and starts Codex with a
 session-scoped `mcp_servers.claude-bridge.env_vars` override so
-project-scoped `.mcp.json` entries and HTTP/SSE headers can reach the
-`claude-bridge` process. It forwards variable names only; values stay in
-the launching environment.
+Claude local-scope MCP entries, project-scoped `.mcp.json` entries, and
+HTTP/SSE headers can reach the `claude-bridge` process. It forwards
+variable names only; values stay in the launching environment.
 
-If a project `.mcp.json` references values from a private env file, source
-that file before launching `cwc`. Changing a token, env file, `.mcp.json`,
-or project root requires a fresh Codex session because an already-running
-Codex-managed `claude-bridge` keeps its original environment.
+If a Claude local-scope MCP entry or project `.mcp.json` references values
+from a private env file, source that file before launching `cwc`. Changing
+a token, env file, MCP config, or project root requires a fresh Codex
+session because an already-running Codex-managed `claude-bridge` keeps
+its original environment.
 
 ## Verify
 
@@ -175,7 +176,8 @@ Use `cwc` instead of `codex` when you want project-scoped Claude MCP
 servers to load correctly. The launcher sets `CLAUDE_BRIDGE_PROJECT_ROOT`
 and passes Codex a per-session `claude-bridge` `env_vars` override for
 that project root plus any `${VAR}` / `$VAR` references in Claude MCP
-config.
+config, including local-scope entries that Claude stores under the
+active project in `~/.claude.json`.
 
 `cwc` reserves only its top-level maintenance options: `--doctor`,
 `--status`, `--smoke-test`, `--install`, `--uninstall`, `--version`,
@@ -213,9 +215,9 @@ rewritten cleanly.
 
 ## MCP Security
 
-Project `.mcp.json` files are trusted code: stdio MCP servers can run
-local commands. Run `cwc` only inside projects whose MCP configuration
-you trust.
+Claude local-scope MCP entries and project `.mcp.json` files are trusted
+code: stdio MCP servers can run local commands. Run `cwc` only inside
+projects whose MCP configuration you trust.
 
 `claude-bridge` starts stdio MCP servers with a restricted environment
 by default. It passes a small non-secret baseline such as `PATH`,
@@ -258,9 +260,13 @@ When Codex connects to `claude-bridge`, `claude-to-codex`:
 
 1. Reads user-scoped MCP servers from `~/.claude.json`.
 2. Detects the active project root.
-3. Reads project-scoped MCP servers from `<project>/.mcp.json`.
-4. Connects to each configured Claude MCP server as a child MCP client.
-5. Re-exposes child tools, prompts, resources, resource templates, completions, subscriptions, and reads through one Codex MCP server.
+3. Reads Claude local-scope MCP servers from the active project's entry in
+   `~/.claude.json`.
+4. Reads project-scoped MCP servers from `<project>/.mcp.json`.
+5. Applies MCP server precedence by name: project `.mcp.json` overrides
+   Claude local scope, and Claude local scope overrides user scope.
+6. Connects to each configured Claude MCP server as a child MCP client.
+7. Re-exposes child tools, prompts, resources, resource templates, completions, subscriptions, and reads through one Codex MCP server.
 
 Claude-style HTTP MCP entries are supported for streamable HTTP and
 legacy SSE transports. For SSE, use `type: "sse"` with `url` and optional

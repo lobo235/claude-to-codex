@@ -105,7 +105,13 @@ If no user servers appear, confirm Claude Code has MCP servers in `~/.claude.jso
 
 ## Project MCP Servers Are Missing
 
-Project-scoped Claude MCP servers are read from `<project>/.mcp.json`.
+Project-scoped Claude MCP servers are read from two places:
+
+- Claude local-scope entries for the active project in `~/.claude.json`
+- `<project>/.mcp.json`
+
+If both define the same MCP server name, `<project>/.mcp.json` wins. A
+Claude local-scope entry wins over a same-name user-scoped entry.
 
 Launch Codex through `cwc` from inside the project:
 
@@ -131,9 +137,9 @@ The output should show `CLAUDE_BRIDGE_PROJECT_ROOT` under `env`.
 `codex-with-claude` is installed too; it is the same launcher with a more explicit name.
 
 If project MCP headers reference variables from a private env file, source
-that file before launching `cwc`. `.mcp.json` stores only references such
-as `${REMOTE_TOOLS_TOKEN}`; neither Codex nor `claude-to-codex` reads
-arbitrary env files automatically.
+that file before launching `cwc`. Claude local-scope entries and
+`.mcp.json` can store references such as `${REMOTE_TOOLS_TOKEN}`; neither
+Codex nor `claude-to-codex` reads arbitrary env files automatically.
 
 ```bash
 cd /path/to/project
@@ -143,9 +149,10 @@ set +a
 cwc
 ```
 
-After changing a token, env file, `.mcp.json`, or project root, start a
-new Codex session. Existing Codex-managed MCP server processes keep the
-environment and project root they had when that session started.
+After changing a token, env file, Claude MCP config, `.mcp.json`, or
+project root, start a new Codex session. Existing Codex-managed MCP
+server processes keep the environment and project root they had when
+that session started.
 
 ## `inspect --tools` Reports Child Failures
 

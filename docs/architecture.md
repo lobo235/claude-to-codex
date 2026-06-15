@@ -38,7 +38,8 @@ claude-to-codex version
 `bridge-env-vars` prints the Codex `env_vars` array that `cwc` passes
 as a per-session config override. It includes
 `CLAUDE_BRIDGE_PROJECT_ROOT` plus variable names referenced by Claude MCP
-config strings.
+config strings, including Claude local-scope entries stored under the
+active project in `~/.claude.json`.
 
 `sync-skills`, `sync-agents`, `sync-commands`, and `sync-artifacts` are safe to run repeatedly.
 
@@ -47,7 +48,13 @@ config strings.
 `claude-to-codex` loads:
 
 - user-scoped MCP servers from `~/.claude.json`
+- Claude local-scope MCP servers from the active project's entry in
+  `~/.claude.json`
 - project-scoped MCP servers from `<project>/.mcp.json`
+
+When multiple scopes define the same MCP server name, the more specific
+scope wins: project `.mcp.json`, then Claude local scope, then user
+scope.
 
 Project root detection prefers `CLAUDE_BRIDGE_PROJECT_ROOT`. If it is unset, `claude-to-codex` walks upward from the current working directory looking for `.mcp.json`, `CLAUDE.md`, or `.git`.
 
@@ -64,15 +71,16 @@ variable but not any configured secret values. Config loading itself keeps
 raw Claude-shaped entries intact so one missing child credential does not
 prevent unrelated child servers from starting.
 
-Project-scoped stdio MCP servers run with their working directory set to the detected project root.
+Claude local-scope and project-scoped stdio MCP servers run with their
+working directory set to the detected project root.
 
 ## MCP Child Environment
 
 Stdio child MCP servers run with a restricted environment by default.
 The bridge passes a small non-secret baseline (`PATH`, `HOME`, user,
 shell, temp, locale, and certificate variables), then overlays the
-server's explicit Claude MCP `env` values. Project-scoped servers also
-receive `CLAUDE_BRIDGE_PROJECT_ROOT`.
+server's explicit Claude MCP `env` values. Claude local-scope and
+project-scoped servers also receive `CLAUDE_BRIDGE_PROJECT_ROOT`.
 
 Ambient shell secrets are not inherited by default. Compatibility
 escape hatches are available:

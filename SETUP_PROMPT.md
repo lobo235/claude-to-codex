@@ -18,7 +18,7 @@ My goal:
 - Codex should pick up my user-scoped Claude agents from ~/.claude/agents when possible.
 - Codex should get generated skill wrappers for my Claude slash commands from ~/.claude/commands.
 - Project-scoped Claude agents from .claude/agents should work when I launch Codex with `cwc` from that project.
-- Project-scoped Claude MCP servers from .mcp.json should work when I launch Codex with `cwc` from that project.
+- Claude local-scope MCP servers and project-scoped `.mcp.json` servers should work when I launch Codex with `cwc` from that project.
 
 Names to use consistently:
 
@@ -77,7 +77,7 @@ Please do this carefully. This setup must be idempotent: it should be safe to re
    - Claude agents from `~/.claude/agents/*.md` should appear as generated TOML at `$CODEX_HOME/agents/*.toml`, or `~/.codex/agents/*.toml` when `CODEX_HOME` is unset.
    - Project Claude agents from `.claude/agents/*.md` should appear as generated TOML at `.codex/agents/*.toml` when using `cwc` from that project.
    - `bridge-env-vars --project "$PWD"` should print a JSON/TOML string array containing `CLAUDE_BRIDGE_PROJECT_ROOT` plus any environment variable names referenced by Claude MCP config. It must not print secret values.
-   - If project MCP config references a private env file, explain that the file must be sourced before launching `cwc`, and that token/env/project-root changes require a fresh Codex session.
+   - If Claude local-scope or project MCP config references a private env file, explain that the file must be sourced before launching `cwc`, and that token/env/project-root changes require a fresh Codex session.
    - Generated wrappers must start with valid Codex YAML frontmatter delimited by `---`, including at least `name` and `description`.
    - Generated agents must be valid Codex TOML with `name`, `description`, and `developer_instructions`.
    - `sync-skills` should use Codex headless mode (`codex exec`) with a fast model to generate useful descriptions from Claude metadata and a bounded, sanitized preview. If I need a different fast model, set `CLAUDE_TO_CODEX_FRONTMATTER_MODEL`.

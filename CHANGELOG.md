@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [v0.4.1] - 2026-06-15
+
+### Fixed
+
+- Load Claude local-scope MCP entries stored under the active project in
+  `~/.claude.json`, include their environment references in
+  `bridge-env-vars`, and let them override same-name user-scoped MCP
+  entries before falling back to project `.mcp.json` precedence.
+- Fail closed on ambiguous equivalent local-scope project paths and pass
+  `CLAUDE_BRIDGE_PROJECT_ROOT` to Claude local-scope stdio MCP servers.
+
 ## [v0.4.0] - 2026-06-13
 
 ### Added

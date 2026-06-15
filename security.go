@@ -53,10 +53,14 @@ func explicitServerEnv(server ScopedServer) []string {
 	for _, key := range keys {
 		env = append(env, key+"="+server.Config.Env[key])
 	}
-	if server.Scope == "project" && server.WorkDir != "" {
+	if isProjectLikeScope(server.Scope) && server.WorkDir != "" {
 		env = append(env, "CLAUDE_BRIDGE_PROJECT_ROOT="+server.WorkDir)
 	}
 	return env
+}
+
+func isProjectLikeScope(scope string) bool {
+	return scope == "project" || scope == "local"
 }
 
 func mergeEnv(base, overrides []string) []string {

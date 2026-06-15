@@ -15,10 +15,10 @@ The daily command is:
 cwc
 ```
 
-`cwc` starts Codex after syncing Claude skills, agents, and commands into Codex-compatible artifacts. It also sets the project root so project `.mcp.json` and `.claude/agents` files are found. For the Codex-managed `claude-bridge` MCP process, `cwc` passes a per-session `env_vars` override containing `CLAUDE_BRIDGE_PROJECT_ROOT` plus any `${VAR}` or `$VAR` references found in Claude MCP config.
+`cwc` starts Codex after syncing Claude skills, agents, and commands into Codex-compatible artifacts. It also sets the project root so Claude local-scope MCP entries, project `.mcp.json`, and `.claude/agents` files are found. For the Codex-managed `claude-bridge` MCP process, `cwc` passes a per-session `env_vars` override containing `CLAUDE_BRIDGE_PROJECT_ROOT` plus any `${VAR}` or `$VAR` references found in Claude MCP config.
 
 Those `env_vars` entries are variable names, not secret values. If a
-project `.mcp.json` uses a header such as
+Claude local-scope entry or project `.mcp.json` uses a header such as
 `"Authorization": "Bearer ${REMOTE_TOOLS_TOKEN}"`, that token must be
 present in the environment that launches `cwc`. For example, if a
 private env file owns the value, source it before starting a fresh Codex
@@ -36,9 +36,9 @@ Changing a token, env file, or project root does not update an already
 running Codex-managed `claude-bridge` process. Restart Codex from the
 intended project with `cwc` after those changes.
 
-Project `.mcp.json` files are trusted code. A project-scoped stdio MCP
-server can run local commands, so use `cwc` only in projects whose MCP
-configuration you trust.
+Claude local-scope MCP entries and project `.mcp.json` files are trusted
+code. Their stdio MCP servers can run local commands, so use `cwc` only
+in projects whose MCP configuration you trust.
 
 For stdio MCP servers, `claude-bridge` does not pass the full shell
 environment by default. It passes a small non-secret baseline plus the

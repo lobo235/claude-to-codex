@@ -32,6 +32,13 @@ func TestBuildChildEnvAddsProjectRootForProjectServers(t *testing.T) {
 	}
 }
 
+func TestBuildChildEnvAddsProjectRootForLocalServers(t *testing.T) {
+	env := buildChildEnv(ScopedServer{Scope: "local", WorkDir: "/tmp/project"})
+	if !containsEnv(env, "CLAUDE_BRIDGE_PROJECT_ROOT=/tmp/project") {
+		t.Fatalf("project root env missing: %#v", env)
+	}
+}
+
 func TestBuildChildEnvPerServerInheritEnv(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "ambient")
 	env := buildChildEnv(ScopedServer{Config: MCPServerConfig{InheritEnv: true}})

@@ -11,7 +11,8 @@ import (
 )
 
 type ClaudeConfig struct {
-	MCPServers map[string]MCPServerConfig `json:"mcpServers"`
+	MCPServers map[string]MCPServerConfig     `json:"mcpServers"`
+	Projects   map[string]ProjectClaudeConfig `json:"projects"`
 }
 
 type ProjectClaudeConfig struct {
@@ -36,39 +37,113 @@ type ScopedServer struct {
 }
 
 func loadClaudeServers(homeDir, projectRoot string) ([]ScopedServer, error) {
-	var servers []ScopedServer
-
 	userPath := filepath.Join(homeDir, ".claude.json")
-	userServers, err := readMCPServers(userPath)
+	userConfig, err := readClaudeConfig(userPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("read user Claude MCP config: %w", err)
 	}
-	for _, name := range sortedKeys(userServers) {
-		servers = append(servers, ScopedServer{Name: name, Scope: "user", Config: userServers[name]})
+
+	scopes := []map[string]ScopedServer{
+		scopedServers(userConfig.MCPServers, "user", ""),
 	}
 
 	if projectRoot != "" {
+		projectConfig, ok, err := projectClaudeConfig(userConfig, projectRoot)
+		if err != nil {
+			return nil, fmt.Errorf("read local Claude MCP config: %w", err)
+		}
+		if ok {
+			scopes = append(scopes, scopedServers(projectConfig.MCPServers, "local", projectRoot))
+		}
+
 		projectPath := filepath.Join(projectRoot, ".mcp.json")
 		projectServers, err := readMCPServers(projectPath)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("read project Claude MCP config: %w", err)
 		}
-		for _, name := range sortedKeys(projectServers) {
-			servers = append(servers, ScopedServer{Name: name, Scope: "project", WorkDir: projectRoot, Config: projectServers[name]})
+		scopes = append(scopes, scopedServers(projectServers, "project", projectRoot))
+	}
+
+	overridden := map[string]bool{}
+	for i := len(scopes) - 1; i >= 0; i-- {
+		for name := range scopes[i] {
+			if overridden[name] {
+				delete(scopes[i], name)
+				continue
+			}
+			overridden[name] = true
+		}
+	}
+
+	var servers []ScopedServer
+	for _, scope := range scopes {
+		for _, name := range sortedKeys(scope) {
+			servers = append(servers, scope[name])
 		}
 	}
 
 	return servers, nil
 }
 
-func readMCPServers(path string) (map[string]MCPServerConfig, error) {
+func scopedServers(servers map[string]MCPServerConfig, scope, workDir string) map[string]ScopedServer {
+	out := make(map[string]ScopedServer, len(servers))
+	for name, cfg := range servers {
+		out[name] = ScopedServer{Name: name, Scope: scope, WorkDir: workDir, Config: cfg}
+	}
+	return out
+}
+
+func projectClaudeConfig(cfg ClaudeConfig, projectRoot string) (ProjectClaudeConfig, bool, error) {
+	if len(cfg.Projects) == 0 || projectRoot == "" {
+		return ProjectClaudeConfig{}, false, nil
+	}
+	if projectConfig, ok := cfg.Projects[projectRoot]; ok {
+		return projectConfig, true, nil
+	}
+
+	cleanRoot := filepath.Clean(projectRoot)
+	var matches []string
+	var matchConfig ProjectClaudeConfig
+	for rawPath, projectConfig := range cfg.Projects {
+		if filepath.Clean(rawPath) == cleanRoot {
+			matches = append(matches, rawPath)
+			if len(matches) == 1 {
+				matchConfig = projectConfig
+			}
+		}
+	}
+	if len(matches) == 0 {
+		return ProjectClaudeConfig{}, false, nil
+	}
+	if len(matches) > 1 {
+		sort.Strings(matches)
+		return ProjectClaudeConfig{}, false, fmt.Errorf("ambiguous local Claude MCP project entries for %q: %s", projectRoot, strings.Join(matches, ", "))
+	}
+	return matchConfig, true, nil
+}
+
+func readClaudeConfig(path string) (ClaudeConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return ClaudeConfig{}, err
 	}
 	var cfg ClaudeConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return ClaudeConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if cfg.MCPServers == nil {
+		cfg.MCPServers = map[string]MCPServerConfig{}
+	}
+	if cfg.Projects == nil {
+		cfg.Projects = map[string]ProjectClaudeConfig{}
+	}
+	return cfg, nil
+}
+
+func readMCPServers(path string) (map[string]MCPServerConfig, error) {
+	cfg, err := readClaudeConfig(path)
+	if err != nil {
+		return nil, err
 	}
 	if cfg.MCPServers == nil {
 		cfg.MCPServers = map[string]MCPServerConfig{}
