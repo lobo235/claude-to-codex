@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [v0.4.2] - 2026-06-17
+
+### Changed
+
+- Move the Go implementation and tests from the repository root into
+  `internal/bridge`, with a thin `cmd/claude-to-codex` entrypoint, so the
+  public repository root is easier to scan.
+- Update the build target and architecture/development docs for the new
+  source layout.
+
 ## [v0.4.1] - 2026-06-15
 
 ### Fixed

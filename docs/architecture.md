@@ -43,6 +43,12 @@ active project in `~/.claude.json`.
 
 `sync-skills`, `sync-agents`, `sync-commands`, and `sync-artifacts` are safe to run repeatedly.
 
+## Source Layout
+
+- `cmd/claude-to-codex`: the thin binary entrypoint. It injects build-time version metadata and delegates to the bridge package.
+- `internal/bridge`: the private implementation for config loading, diagnostics, artifact syncing, and MCP proxying.
+- `tools/mcp-compat-probe`: a helper command used by MCP compatibility smoke tests.
+
 ## Config Loading
 
 `claude-to-codex` loads:

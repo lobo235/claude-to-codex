@@ -1,4 +1,4 @@
-package main
+package bridge
 
 type nameMapper struct {
 }

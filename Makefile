@@ -7,7 +7,7 @@ BINDIR := $(PREFIX)/bin
 .PHONY: build test lint cover vuln secrets run install uninstall uninstall-dry-run clean inspect inspect-tools
 
 build:
-	go build -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BIN) .
+	go build -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/claude-to-codex
 
 test:
 	go test ./...

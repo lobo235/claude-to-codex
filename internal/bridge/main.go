@@ -1,4 +1,4 @@
-package main
+package bridge
 
 import (
 	"context"
@@ -14,58 +14,62 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var version = "dev"
+var Version = "dev"
 
-func main() {
-	if len(os.Args) < 2 {
-		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|bridge-env-vars|sync-commands|sync-skills|sync-agents|sync-artifacts|version", os.Args[0])
+func Main(args []string) {
+	if len(args) < 2 {
+		prog := "claude-to-codex"
+		if len(args) > 0 {
+			prog = args[0]
+		}
+		fatalf("usage: %s serve|inspect|doctor|status|smoke-test|bridge-env-vars|sync-commands|sync-skills|sync-agents|sync-artifacts|version", prog)
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	switch os.Args[1] {
+	switch args[1] {
 	case "serve":
 		if err := runServe(logger); err != nil {
 			fatalf("%v", err)
 		}
 	case "inspect":
-		if err := runInspect(os.Args[2:], logger); err != nil {
+		if err := runInspect(args[2:], logger); err != nil {
 			fatalf("%v", err)
 		}
 	case "doctor":
-		if err := runDoctor(os.Args[2:], logger); err != nil {
+		if err := runDoctor(args[2:], logger); err != nil {
 			fatalf("%v", err)
 		}
 	case "status":
-		if err := runStatus(os.Args[2:], logger); err != nil {
+		if err := runStatus(args[2:], logger); err != nil {
 			fatalf("%v", err)
 		}
 	case "smoke-test":
-		if err := runSmokeTest(os.Args[2:], logger); err != nil {
+		if err := runSmokeTest(args[2:], logger); err != nil {
 			fatalf("%v", err)
 		}
 	case "bridge-env-vars":
-		if err := runBridgeEnvVars(os.Args[2:]); err != nil {
+		if err := runBridgeEnvVars(args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "sync-commands":
-		if err := runSyncCommands(os.Args[2:]); err != nil {
+		if err := runSyncCommands(args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "sync-skills":
-		if err := runSyncSkills(os.Args[2:]); err != nil {
+		if err := runSyncSkills(args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "sync-agents":
-		if err := runSyncAgents(os.Args[2:]); err != nil {
+		if err := runSyncAgents(args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "sync-artifacts":
-		if err := runSyncArtifacts(os.Args[2:]); err != nil {
+		if err := runSyncArtifacts(args[2:]); err != nil {
 			fatalf("%v", err)
 		}
 	case "version", "--version", "-v":
-		fmt.Printf("claude-to-codex version %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("claude-to-codex version %s %s/%s\n", Version, runtime.GOOS, runtime.GOARCH)
 	default:
-		fatalf("unknown command %q", os.Args[1])
+		fatalf("unknown command %q", args[1])
 	}
 }
 
@@ -85,7 +89,7 @@ func runServe(logger *slog.Logger) error {
 	}
 	defer proxy.close()
 
-	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "claude-bridge", Version: version}, proxy.serverOptions())
+	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "claude-bridge", Version: Version}, proxy.serverOptions())
 	if err := proxy.register(context.Background(), srv); err != nil {
 		return err
 	}

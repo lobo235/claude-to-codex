@@ -1,4 +1,4 @@
-package main
+package bridge
 
 import (
 	"context"
@@ -132,7 +132,7 @@ func connectChild(ctx context.Context, server ScopedServer) (*childConnection, e
 }
 
 func connectChildSession(ctx context.Context, server ScopedServer) (*mcpsdk.ClientSession, error) {
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "claude-to-codex", Version: version}, nil)
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "claude-to-codex", Version: Version}, nil)
 	cfg, err := expandMCPServerConfig(server.Config)
 	if err != nil {
 		return nil, fmt.Errorf("expand config: %w", err)

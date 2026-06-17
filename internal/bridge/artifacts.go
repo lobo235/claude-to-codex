@@ -1,4 +1,4 @@
-package main
+package bridge
 
 import (
 	"bytes"
@@ -304,7 +304,7 @@ func automationProjectAgentCacheDir(cacheRoot, project string) (string, string, 
 }
 
 func automationCacheRoot(cacheDir string) string {
-	return filepath.Join(cacheDir, artifactCacheSchema, "claude-to-codex-"+safeCacheComponent(version))
+	return filepath.Join(cacheDir, artifactCacheSchema, "claude-to-codex-"+safeCacheComponent(Version))
 }
 
 func shortHash(value string) string {

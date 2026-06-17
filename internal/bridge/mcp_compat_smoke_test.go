@@ -1,13 +1,20 @@
-package main
+package bridge
 
 import (
 	"encoding/json"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestMCPCompatSmokeDefaultConfigPinsUVXFixtures(t *testing.T) {
-	cmd := exec.Command("bash", "scripts/mcp-compat-smoke", "--print-default-config")
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test file")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	cmd := exec.Command("bash", filepath.Join(repoRoot, "scripts/mcp-compat-smoke"), "--print-default-config")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("print default config: %v\n%s", err, out)

@@ -392,6 +392,12 @@ Review generated Codex skills and agents before relying on them. The generated a
 
 ## Development
 
+Source layout:
+
+- `cmd/claude-to-codex`: thin executable entrypoint.
+- `internal/bridge`: bridge implementation and tests.
+- `tools/mcp-compat-probe`: compatibility probe used by smoke tests.
+
 ```bash
 make lint
 make test
