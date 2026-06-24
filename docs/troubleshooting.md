@@ -218,8 +218,17 @@ session with an old token or project root, an HTTP/SSE auth failure after
 the stream was established, a remote server restart, or a network
 disconnect.
 
-Restart Codex from the intended project after exporting the needed env
-vars:
+`claude-bridge` treats EOF, closed connections, `client is closing`, and
+Streamable HTTP `session not found` as stale child-session failures. It
+reconnects only the affected child server and updates existing exposed
+tool routes to use the new child session. For an ambiguous `tools/call`,
+the bridge reconnects for future calls but returns an error for the
+current call instead of retrying blindly; retry the tool only when it is
+safe for that specific operation.
+
+If reconnect keeps failing, or if you changed a token, env file, Claude
+MCP config, `.mcp.json`, or project root, restart Codex from the intended
+project after exporting the needed env vars:
 
 ```bash
 cd /path/to/project

@@ -21,6 +21,7 @@ name: security-reviewer
 description: Reviews code changes for concrete security regressions.
 tools: Read, Grep, Bash
 color: red
+model: opus
 ---
 
 Review auth, secrets, and input handling.
@@ -53,6 +54,9 @@ Review auth, secrets, and input handling.
 		if !strings.Contains(body, want) {
 			t.Fatalf("generated agent missing %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, "claude-frontmatter.model") || strings.Contains(body, "opus") {
+		t.Fatalf("generated agent should not preserve Claude model frontmatter:\n%s", body)
 	}
 }
 
@@ -116,6 +120,25 @@ func TestSyncClaudeAgentUpdatesGeneratedAgentWhenSourceChanges(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "Updated body.") {
 		t.Fatalf("generated agent was not updated:\n%s", data)
+	}
+}
+
+func TestGeneratedAgentWithSuppressedModelCommentIsStale(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER", "1")
+	agent := claudeAgent{
+		FileName:   "security-reviewer",
+		CodexName:  "security_reviewer",
+		SourceHash: "abc123",
+	}
+	body := "# " + generatedAgentMarker + "\n" +
+		"# source-sha256: abc123\n" +
+		"# codex-name: security_reviewer\n" +
+		"# description-generator: fallback\n" +
+		"# description-model: fallback\n" +
+		"# claude-frontmatter.model: opus\n"
+
+	if generatedAgentCurrent(body, agent) {
+		t.Fatalf("generated agent with Claude model comment should be stale")
 	}
 }
 

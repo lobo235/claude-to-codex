@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"log/slog"
 	"os"
@@ -16,6 +17,7 @@ import (
 )
 
 const fakeChildEnv = "CLAUDE_TO_CODEX_FAKE_CHILD"
+const fakeChildFailToolOnceEnv = "CLAUDE_TO_CODEX_FAKE_CHILD_FAIL_TOOL_ONCE"
 const testServeEnv = "CLAUDE_TO_CODEX_TEST_SERVE"
 
 type fakeToolOutput struct {
@@ -250,6 +252,49 @@ func TestProxyChildSurvivesConnectContextCancellation(t *testing.T) {
 	}
 }
 
+func TestProxyReconnectsChildAfterAmbiguousToolSessionDeath(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	stateFile := filepath.Join(t.TempDir(), "failed-once")
+	server := fakeServer("flaky", "project", "")
+	server.Config.Env[fakeChildFailToolOnceEnv] = stateFile
+	session, closeProxy := startTestProxy(t, ctx, []ScopedServer{server})
+	defer closeProxy()
+
+	_, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: "flaky__flaky_only", Arguments: map[string]any{}})
+	if err == nil {
+		t.Fatal("first flaky tool call succeeded, want stale-session failure")
+	}
+	message := err.Error()
+	for _, want := range []string{
+		"EOF",
+		"bridge reconnected child for future calls",
+		"not retrying current tools/call",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("first call error = %q, want substring %q", message, want)
+		}
+	}
+
+	got := callFakeTool(t, ctx, session, "flaky__flaky_only")
+	if got.Server != "flaky" || got.Tool != "flaky_only" {
+		t.Fatalf("flaky tool after reconnect = %#v", got)
+	}
+}
+
+func TestChildOperationFailureHintTreatsStreamableSessionNotFoundAsReconnectable(t *testing.T) {
+	errText := `client is closing: sending "tools/call": failed to connect (session ID: mcp-session-test): session not found`
+	if !isChildConnectionLifecycleError(errors.New(errText)) {
+		t.Fatalf("session-not-found error was not classified as child connection lifecycle failure")
+	}
+	hint := childOperationFailureHint(errText)
+	for _, want := range []string{"reconnects the affected child", "restart Codex only if reconnect keeps failing"} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("hint = %q, want substring %q", hint, want)
+		}
+	}
+}
+
 func TestInspectToolsReportsExposedToolsAndFailures(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -382,6 +427,16 @@ func runFakeChildServer(name string) error {
 	for _, toolName := range []string{name + "_only", "shared", "env_EXPLICIT_TOKEN", "env_AMBIENT_SECRET_TOKEN", "env_CLAUDE_BRIDGE_PROJECT_ROOT"} {
 		toolName := toolName
 		mcpsdk.AddTool[map[string]any, fakeToolOutput](server, &mcpsdk.Tool{Name: toolName, Description: "fake " + toolName}, func(ctx context.Context, req *mcpsdk.CallToolRequest, in map[string]any) (*mcpsdk.CallToolResult, fakeToolOutput, error) {
+			if stateFile := os.Getenv(fakeChildFailToolOnceEnv); stateFile != "" && req.Params.Name == name+"_only" {
+				if _, err := os.Stat(stateFile); os.IsNotExist(err) {
+					if writeErr := os.WriteFile(stateFile, []byte("failed"), 0o600); writeErr != nil {
+						return nil, fakeToolOutput{}, writeErr
+					}
+					os.Exit(42)
+				} else if err != nil {
+					return nil, fakeToolOutput{}, err
+				}
+			}
 			wd, err := os.Getwd()
 			if err != nil {
 				return nil, fakeToolOutput{}, err

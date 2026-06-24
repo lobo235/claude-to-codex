@@ -209,6 +209,20 @@ func TestCodexFrontmatterExecArgsStayToolFreeForUntrustedSkillText(t *testing.T)
 	}
 }
 
+func TestCodexFrontmatterExecArgsUseCliDefaultWithoutOverride(t *testing.T) {
+	t.Setenv("CLAUDE_TO_CODEX_FRONTMATTER_MODEL", "")
+	if model := selectedFrontmatterExecModel(); model != "" {
+		t.Fatalf("default frontmatter exec model = %q, want empty CLI default", model)
+	}
+	if model := selectedFrontmatterModel(); model != "default" {
+		t.Fatalf("default frontmatter metadata model = %q, want default", model)
+	}
+	args := codexMetadataExecArgs(selectedFrontmatterExecModel(), "/tmp/frontmatter.json")
+	if indexOf(args, "--model") >= 0 {
+		t.Fatalf("default frontmatter args should not force a model: %#v", args)
+	}
+}
+
 func TestCodexFrontmatterEnvUsesRestrictedBaseline(t *testing.T) {
 	t.Setenv("PATH", "/bin")
 	t.Setenv("HOME", "/tmp/home")

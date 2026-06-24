@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [v0.4.3] - 2026-06-24
+
+### Changed
+
+- Let generated Codex skill and agent metadata use the Codex CLI default
+  model unless `CLAUDE_TO_CODEX_FRONTMATTER_MODEL` is explicitly set.
+- Suppress Claude-only agent `model` frontmatter comments in generated Codex
+  agent TOML and mark older generated agents containing those comments stale.
+
+### Fixed
+
+- Reconnect only the affected child MCP server when `claude-bridge` detects
+  stale child-session failures such as `EOF`, `client is closing`, closed
+  connections, or Streamable HTTP `session not found`.
+- Keep exposed MCP tool, prompt, resource, and completion routes pointed at
+  the refreshed child session after reconnect, while avoiding blind retries
+  for ambiguous `tools/call` failures.
+
 ## [v0.4.2] - 2026-06-17
 
 ### Changed

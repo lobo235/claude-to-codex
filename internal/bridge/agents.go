@@ -387,7 +387,8 @@ func generatedAgentCurrent(body string, agent claudeAgent) bool {
 	return metadata["source-sha256"] == agent.SourceHash &&
 		metadata["codex-name"] == agent.CodexName &&
 		metadata["description-generator"] == expectedGenerator &&
-		metadata["description-model"] == expectedModel
+		metadata["description-model"] == expectedModel &&
+		!hasSuppressedAgentFrontmatterComments(metadata)
 }
 
 func expectedAgentDescriptionMetadata(agent claudeAgent) (string, string) {
@@ -515,6 +516,9 @@ func renderCodexAgent(agent claudeAgent, description, descriptionGenerator, desc
 		b.WriteString("# description-model: " + sanitizeCommentValue(descriptionModel) + "\n")
 	}
 	for _, key := range sortedMapKeys(agent.UnknownFrontmatter) {
+		if suppressAgentFrontmatterComment(key) {
+			continue
+		}
 		b.WriteString("# claude-frontmatter." + sanitizeCommentValue(key) + ": " + sanitizeCommentValue(redactAgentFrontmatterValue(key, agent.UnknownFrontmatter[key])) + "\n")
 	}
 	b.WriteString("\n")
@@ -535,6 +539,24 @@ func agentDeveloperInstructions(agent claudeAgent) string {
 	b.WriteString("Apply the following Claude Code agent instructions in Codex, adapting Claude-specific tool names to Codex tools and current session policy.\n\n")
 	b.WriteString(agent.Body)
 	return b.String()
+}
+
+func hasSuppressedAgentFrontmatterComments(metadata map[string]string) bool {
+	for key := range metadata {
+		if strings.HasPrefix(key, "claude-frontmatter.") && suppressAgentFrontmatterComment(strings.TrimPrefix(key, "claude-frontmatter.")) {
+			return true
+		}
+	}
+	return false
+}
+
+func suppressAgentFrontmatterComment(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "model", "model_reasoning_effort", "model-reasoning-effort":
+		return true
+	default:
+		return false
+	}
 }
 
 func sanitizeCommentValue(value string) string {
@@ -593,7 +615,7 @@ type generatedAgentDescription struct {
 }
 
 func generateAgentDescriptionWithCodex(agent claudeAgent, fallback string) (generatedAgentDescription, error) {
-	model := selectedFrontmatterModel()
+	model := selectedFrontmatterExecModel()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 

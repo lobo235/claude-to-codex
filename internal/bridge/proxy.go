@@ -16,8 +16,10 @@ import (
 
 type childServer struct {
 	ScopedServer
-	session *mcpsdk.ClientSession
-	cancel  context.CancelFunc
+	mu          sync.RWMutex
+	reconnectMu sync.Mutex
+	session     *mcpsdk.ClientSession
+	cancel      context.CancelFunc
 }
 
 type childConnection struct {
@@ -175,6 +177,67 @@ func connectFailuresError(failures []childFailure) error {
 	return fmt.Errorf("no Claude MCP child servers available: %s", strings.Join(parts, "; "))
 }
 
+func (child *childServer) currentSession() *mcpsdk.ClientSession {
+	child.mu.RLock()
+	defer child.mu.RUnlock()
+	return child.session
+}
+
+func (child *childServer) replaceConnection(conn *childConnection) (*mcpsdk.ClientSession, context.CancelFunc) {
+	child.mu.Lock()
+	defer child.mu.Unlock()
+	oldSession := child.session
+	oldCancel := child.cancel
+	child.session = conn.session
+	child.cancel = conn.cancel
+	return oldSession, oldCancel
+}
+
+func (child *childServer) close() {
+	session, cancel := child.replaceConnection(&childConnection{})
+	if session != nil {
+		_ = session.Close()
+	}
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (p *proxyServer) reconnectChild(ctx context.Context, child *childServer, operation string) error {
+	child.reconnectMu.Lock()
+	defer child.reconnectMu.Unlock()
+
+	p.logger.Warn("reconnecting Claude MCP server after child connection failure", "scope", child.Scope, "server", child.Name, "operation", operation)
+	reconnectCtx, cancel := p.operationContext(ctx)
+	conn, err := connectChild(reconnectCtx, child.ScopedServer)
+	cancel()
+	if err != nil {
+		p.logger.Error("failed to reconnect Claude MCP server", "scope", child.Scope, "server", child.Name, "operation", operation, "error", redactSensitive(err.Error()))
+		return err
+	}
+	oldSession, oldCancel := child.replaceConnection(conn)
+	if oldSession != nil {
+		_ = oldSession.Close()
+	}
+	if oldCancel != nil {
+		oldCancel()
+	}
+	p.logger.Info("reconnected Claude MCP server", "scope", child.Scope, "server", child.Name, "operation", operation)
+	return nil
+}
+
+func retryChildOperationOnce[T any](ctx context.Context, p *proxyServer, child *childServer, operation string, run func(context.Context, *mcpsdk.ClientSession) (T, error)) (T, error) {
+	res, err := run(ctx, child.currentSession())
+	if err == nil || !isChildConnectionLifecycleError(err) {
+		return res, err
+	}
+	if reconnectErr := p.reconnectChild(ctx, child, operation); reconnectErr != nil {
+		var zero T
+		return zero, fmt.Errorf("%w; reconnect failed: %v", err, reconnectErr)
+	}
+	return run(ctx, child.currentSession())
+}
+
 type headerTransport struct {
 	headers map[string]string
 	base    http.RoundTripper
@@ -204,13 +267,17 @@ func (p *proxyServer) serverOptions() *mcpsdk.ServerOptions {
 				ref := *params.Ref
 				ref.Name = route.name
 				params.Ref = &ref
-				return route.child.session.Complete(ctx, &params)
+				return retryChildOperationOnce(ctx, p, route.child, "completion/complete", func(ctx context.Context, session *mcpsdk.ClientSession) (*mcpsdk.CompleteResult, error) {
+					return session.Complete(ctx, &params)
+				})
 			case "ref/resource":
 				child := p.resource[params.Ref.URI]
 				if child == nil {
 					return nil, fmt.Errorf("unknown resource completion reference %q", params.Ref.URI)
 				}
-				return child.session.Complete(ctx, &params)
+				return retryChildOperationOnce(ctx, p, child, "completion/complete", func(ctx context.Context, session *mcpsdk.ClientSession) (*mcpsdk.CompleteResult, error) {
+					return session.Complete(ctx, &params)
+				})
 			default:
 				return nil, fmt.Errorf("unsupported completion reference type %q", params.Ref.Type)
 			}
@@ -220,14 +287,20 @@ func (p *proxyServer) serverOptions() *mcpsdk.ServerOptions {
 			if child == nil {
 				return fmt.Errorf("unknown resource subscription %q", req.Params.URI)
 			}
-			return child.session.Subscribe(ctx, req.Params)
+			_, err := retryChildOperationOnce(ctx, p, child, "resources/subscribe", func(ctx context.Context, session *mcpsdk.ClientSession) (struct{}, error) {
+				return struct{}{}, session.Subscribe(ctx, req.Params)
+			})
+			return err
 		},
 		UnsubscribeHandler: func(ctx context.Context, req *mcpsdk.UnsubscribeRequest) error {
 			child := p.resource[req.Params.URI]
 			if child == nil {
 				return fmt.Errorf("unknown resource subscription %q", req.Params.URI)
 			}
-			return child.session.Unsubscribe(ctx, req.Params)
+			_, err := retryChildOperationOnce(ctx, p, child, "resources/unsubscribe", func(ctx context.Context, session *mcpsdk.ClientSession) (struct{}, error) {
+				return struct{}{}, session.Unsubscribe(ctx, req.Params)
+			})
+			return err
 		},
 	}
 }
@@ -241,7 +314,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 
 	for _, child := range p.children {
 		toolsCtx, cancelTools := p.operationContext(ctx)
-		tools, err := collectTools(toolsCtx, child.session)
+		tools, err := p.collectChildTools(toolsCtx, child)
 		cancelTools()
 		if err != nil {
 			p.logger.Warn("child tools unavailable", "scope", child.Scope, "server", child.Name, "error", redactSensitive(err.Error()))
@@ -253,7 +326,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 		}
 
 		promptsCtx, cancelPrompts := p.operationContext(ctx)
-		prompts, err := collectPrompts(promptsCtx, child.session)
+		prompts, err := p.collectChildPrompts(promptsCtx, child)
 		cancelPrompts()
 		if err == nil {
 			childPrompts[child] = prompts
@@ -280,8 +353,14 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 			srv.AddTool(&tool, func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 				callCtx, cancel := p.operationContext(ctx)
 				defer cancel()
-				res, err := route.child.session.CallTool(callCtx, &mcpsdk.CallToolParams{Name: route.name, Arguments: req.Params.Arguments})
+				res, err := route.child.currentSession().CallTool(callCtx, &mcpsdk.CallToolParams{Name: route.name, Arguments: req.Params.Arguments})
 				if err != nil {
+					if isChildConnectionLifecycleError(err) {
+						if reconnectErr := p.reconnectChild(ctx, route.child, "tools/call"); reconnectErr != nil {
+							return nil, childOperationError(route.child.ScopedServer, "tools/call", fmt.Sprintf("%q via exposed tool %q", route.name, req.Params.Name), fmt.Errorf("%w; reconnect failed: %v", err, reconnectErr))
+						}
+						return nil, childOperationError(route.child.ScopedServer, "tools/call", fmt.Sprintf("%q via exposed tool %q", route.name, req.Params.Name), fmt.Errorf("%w; bridge reconnected child for future calls; not retrying current tools/call because delivery state is ambiguous", err))
+					}
 					return nil, childOperationError(route.child.ScopedServer, "tools/call", fmt.Sprintf("%q via exposed tool %q", route.name, req.Params.Name), err)
 				}
 				return res, nil
@@ -301,14 +380,16 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 			srv.AddPrompt(&prompt, func(ctx context.Context, req *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
 				params := *req.Params
 				params.Name = route.name
-				return route.child.session.GetPrompt(ctx, &params)
+				return retryChildOperationOnce(ctx, p, route.child, "prompts/get", func(ctx context.Context, session *mcpsdk.ClientSession) (*mcpsdk.GetPromptResult, error) {
+					return session.GetPrompt(ctx, &params)
+				})
 			})
 		}
 	}
 
 	for _, child := range p.children {
 		resourcesCtx, cancelResources := p.operationContext(ctx)
-		resources, err := collectResources(resourcesCtx, child.session)
+		resources, err := p.collectChildResources(resourcesCtx, child)
 		cancelResources()
 		if err == nil {
 			for _, childResource := range resources {
@@ -316,7 +397,9 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 				resourceChild := child
 				p.resource[resource.URI] = resourceChild
 				srv.AddResource(&resource, func(ctx context.Context, req *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
-					return resourceChild.session.ReadResource(ctx, req.Params)
+					return retryChildOperationOnce(ctx, p, resourceChild, "resources/read", func(ctx context.Context, session *mcpsdk.ClientSession) (*mcpsdk.ReadResourceResult, error) {
+						return session.ReadResource(ctx, req.Params)
+					})
 				})
 			}
 		} else {
@@ -324,7 +407,7 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 		}
 
 		templatesCtx, cancelTemplates := p.operationContext(ctx)
-		templates, err := collectResourceTemplates(templatesCtx, child.session)
+		templates, err := p.collectChildResourceTemplates(templatesCtx, child)
 		cancelTemplates()
 		if err == nil {
 			for _, childTemplate := range templates {
@@ -332,11 +415,9 @@ func (p *proxyServer) register(ctx context.Context, srv *mcpsdk.Server) error {
 				templateChild := child
 				p.templateRoutes = append(p.templateRoutes, templateChild)
 				srv.AddResourceTemplate(&template, func(ctx context.Context, req *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
-					res, err := templateChild.session.ReadResource(ctx, req.Params)
-					if err != nil {
-						return nil, err
-					}
-					return res, nil
+					return retryChildOperationOnce(ctx, p, templateChild, "resources/read", func(ctx context.Context, session *mcpsdk.ClientSession) (*mcpsdk.ReadResourceResult, error) {
+						return session.ReadResource(ctx, req.Params)
+					})
 				})
 			}
 		} else {
@@ -368,11 +449,27 @@ func childOperationFailureHint(message string) string {
 		return "child MCP operation timed out; check remote server latency or raise CLAUDE_BRIDGE_OPERATION_TIMEOUT before launching cwc"
 	case strings.Contains(lower, "unauthorized") || strings.Contains(lower, "status 401") || strings.Contains(lower, "status code 401") || strings.Contains(lower, "forbidden") || strings.Contains(lower, "status 403") || strings.Contains(lower, "status code 403"):
 		return "check the child MCP server auth token or Authorization/header environment forwarded to claude-bridge"
-	case strings.Contains(lower, "eof") || strings.Contains(lower, "connection closed") || strings.Contains(lower, "client is closing"):
-		return "child MCP connection closed; for HTTP/SSE servers check server health, Authorization/header env vars forwarded to claude-bridge, and restart Codex to clear stale sessions"
+	case isChildConnectionLifecycleMessage(lower):
+		return "child MCP connection closed; claude-bridge reconnects the affected child for future calls, so restart Codex only if reconnect keeps failing"
 	default:
 		return ""
 	}
+}
+
+func isChildConnectionLifecycleError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return isChildConnectionLifecycleMessage(strings.ToLower(err.Error()))
+}
+
+func isChildConnectionLifecycleMessage(lower string) bool {
+	return strings.Contains(lower, "eof") ||
+		strings.Contains(lower, "connection closed") ||
+		strings.Contains(lower, "client is closing") ||
+		strings.Contains(lower, "session not found") ||
+		strings.Contains(lower, "use of closed network connection") ||
+		strings.Contains(lower, "broken pipe")
 }
 
 func (p *proxyServer) inspectTools(ctx context.Context) ([]exposedTool, []childFailure) {
@@ -381,7 +478,7 @@ func (p *proxyServer) inspectTools(ctx context.Context) ([]exposedTool, []childF
 	var failures []childFailure
 	for _, child := range p.children {
 		toolsCtx, cancel := p.operationContext(ctx)
-		tools, err := collectTools(toolsCtx, child.session)
+		tools, err := p.collectChildTools(toolsCtx, child)
 		cancel()
 		if err != nil {
 			failures = append(failures, childFailure{server: child.ScopedServer, operation: "list_tools", err: err})
@@ -407,6 +504,30 @@ func (p *proxyServer) inspectTools(ctx context.Context) ([]exposedTool, []childF
 		return out[i].exposedName < out[j].exposedName
 	})
 	return out, failures
+}
+
+func (p *proxyServer) collectChildTools(ctx context.Context, child *childServer) ([]*mcpsdk.Tool, error) {
+	return retryChildOperationOnce(ctx, p, child, "tools/list", func(ctx context.Context, session *mcpsdk.ClientSession) ([]*mcpsdk.Tool, error) {
+		return collectTools(ctx, session)
+	})
+}
+
+func (p *proxyServer) collectChildPrompts(ctx context.Context, child *childServer) ([]*mcpsdk.Prompt, error) {
+	return retryChildOperationOnce(ctx, p, child, "prompts/list", func(ctx context.Context, session *mcpsdk.ClientSession) ([]*mcpsdk.Prompt, error) {
+		return collectPrompts(ctx, session)
+	})
+}
+
+func (p *proxyServer) collectChildResources(ctx context.Context, child *childServer) ([]*mcpsdk.Resource, error) {
+	return retryChildOperationOnce(ctx, p, child, "resources/list", func(ctx context.Context, session *mcpsdk.ClientSession) ([]*mcpsdk.Resource, error) {
+		return collectResources(ctx, session)
+	})
+}
+
+func (p *proxyServer) collectChildResourceTemplates(ctx context.Context, child *childServer) ([]*mcpsdk.ResourceTemplate, error) {
+	return retryChildOperationOnce(ctx, p, child, "resources/templates/list", func(ctx context.Context, session *mcpsdk.ClientSession) ([]*mcpsdk.ResourceTemplate, error) {
+		return collectResourceTemplates(ctx, session)
+	})
 }
 
 func collectTools(ctx context.Context, session *mcpsdk.ClientSession) ([]*mcpsdk.Tool, error) {
@@ -459,10 +580,7 @@ func (p *proxyServer) close() {
 		wg.Add(1)
 		go func(child *childServer) {
 			defer wg.Done()
-			_ = child.session.Close()
-			if child.cancel != nil {
-				child.cancel()
-			}
+			child.close()
 		}(child)
 	}
 	wg.Wait()

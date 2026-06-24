@@ -640,9 +640,16 @@ func selectedFrontmatterModel() string {
 	}
 	model := os.Getenv("CLAUDE_TO_CODEX_FRONTMATTER_MODEL")
 	if model == "" {
-		model = "gpt-5.4-mini"
+		model = "default"
 	}
 	return model
+}
+
+func selectedFrontmatterExecModel() string {
+	if os.Getenv("CLAUDE_TO_CODEX_DISABLE_CODEX_FRONTMATTER") == "1" {
+		return ""
+	}
+	return os.Getenv("CLAUDE_TO_CODEX_FRONTMATTER_MODEL")
 }
 
 func isSymlink(path string) (bool, error) {
@@ -657,7 +664,7 @@ func isSymlink(path string) (bool, error) {
 }
 
 func generateSkillFrontmatterWithCodex(skill claudeSkill, fallback string) (generatedSkillFrontmatter, error) {
-	model := selectedFrontmatterModel()
+	model := selectedFrontmatterExecModel()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
@@ -695,7 +702,11 @@ func codexMetadataExecArgs(model, outPath string) []string {
 	args := []string{
 		"-a", "never",
 		"exec",
-		"--model", model,
+	}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	args = append(args,
 		"--sandbox", "read-only",
 		"--skip-git-repo-check",
 		"--ephemeral",
@@ -705,7 +716,7 @@ func codexMetadataExecArgs(model, outPath string) []string {
 		"--cd", os.TempDir(),
 		"-o", outPath,
 		"-",
-	}
+	)
 	return args
 }
 

@@ -68,5 +68,9 @@ Proxied child tool calls use the bridge child-operation timeout
 fails after tools were listed, current versions return an error that names
 the child scope, child server, original tool name, exposed tool name, and
 a hint for common causes such as missing env vars, auth failures, timeouts,
-or closed HTTP/SSE connections. See [troubleshooting](troubleshooting.md)
-for recovery steps.
+or closed HTTP/SSE connections. When a closed or stale child session is
+detected, `claude-bridge` reconnects only that affected child server. It
+does not blindly retry the current `tools/call`, because the bridge cannot
+prove whether the child received a mutating request, but future calls use
+the refreshed child session. See [troubleshooting](troubleshooting.md) for
+recovery steps.
