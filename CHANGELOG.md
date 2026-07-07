@@ -2,13 +2,14 @@
 
 ## [Unreleased]
 
+## [v0.4.4] - 2026-07-07
+
 ### Changed
 
-- Migrate internal internal CI to the optimized `ci-go-docker` runner pool:
-  drop `actions/setup-go` in favor of the baked toolchain, pin the internal
-  checkout mirror commit, add a ref-keyed `concurrency` group and per-job
-  `timeout-minutes`, and add a tool preflight. The public GitHub mirror
-  workflow is unaffected.
+- Migrate internal CI to an optimized runner pool: drop `actions/setup-go`
+  in favor of the baked Go toolchain, pin the checkout action to a mirrored
+  commit, add a ref-keyed `concurrency` group and per-job `timeout-minutes`,
+  and add a tool preflight. The public GitHub mirror workflow is unaffected.
 
 ## [v0.4.3] - 2026-06-24
 
